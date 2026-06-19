@@ -6,7 +6,7 @@ import { indexDocument } from "../../services/pythonClient";
 import {
   FileText, Layers, Upload, Trash2, Loader2,
   CheckCircle, XCircle, Clock, Eye, FolderOpen,
-  Search, Database, Pencil, RefreshCw, Check,
+  Search, Database, Pencil, RefreshCw, Check, FolderSearch, Copy,
 } from "lucide-react";
 import type { Document } from "../../types";
 import { ConfirmDialog } from "../common/ConfirmDialog";
@@ -23,7 +23,7 @@ export function KBSettings() {
   const { kbId } = useParams<{ kbId: string }>();
   const navigate = useNavigate();
   const { t } = useI18n();
-  const { knowledgeBases, documents, loadKBs, loadDocuments, uploadDocument, deleteDocument, refreshDocument, setActiveKB, renameKB, reindexDocument, reindexAll, indexingIds } = useKBStore();
+  const { knowledgeBases, documents, loadKBs, loadDocuments, uploadDocument, deleteDocument, refreshDocument, setActiveKB, renameKB, copyKB, reindexDocument, reindexAll, indexingIds } = useKBStore();
   const [dragOver, setDragOver] = useState(false);
   const uploadingRef = useRef(false);
   const [indexing, setIndexing] = useState<Record<string, boolean>>({});
@@ -80,6 +80,9 @@ export function KBSettings() {
             useKBStore.setState((s) => ({
               documents: s.documents.map((d) =>
                 d.id === doc.id ? { ...d, chunk_count: result.chunk_count, embedding_model: result.embedding_model } : d
+              ),
+              knowledgeBases: s.knowledgeBases.map((k) =>
+                k.id === kbId ? { ...k, embedding_model: result.embedding_model, embedding_dim: result.embedding_dim } : k
               ),
             }));
           } catch (e) {
@@ -165,6 +168,16 @@ export function KBSettings() {
     await reindexAll(kbId);
   };
 
+  const handleOpenInExplorer = async (doc: Document) => {
+    if (!kbId) return;
+    try {
+      const { revealDocumentInExplorer } = await import("../../services/tauriBridge");
+      await revealDocumentInExplorer(kbId, doc.id);
+    } catch (e) {
+      console.error("Failed to open in explorer:", e);
+    }
+  };
+
   // ── Render ──
 
   if (!kb) {
@@ -206,7 +219,10 @@ export function KBSettings() {
             )}
             {kb.description && <p className="text-muted-foreground text-sm truncate">{kb.description}</p>}
             {kb.embedding_model && (
-              <p className="text-xs text-muted-foreground mt-0.5">{t("docs.embeddingModel", { model: kb.embedding_model })}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded font-medium">{kb.embedding_model}</span>
+                {kb.embedding_dim > 0 && <span className="ml-1">dim: {kb.embedding_dim}</span>}
+              </p>
             )}
           </div>
           <div className="flex items-center gap-2">
@@ -220,6 +236,17 @@ export function KBSettings() {
                 {t("docs.reindexAll")}
               </button>
             )}
+            <button
+              onClick={async () => {
+                if (kbId) {
+                  await copyKB(kbId);
+                }
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 border rounded-lg text-sm font-medium hover:bg-muted transition-colors"
+              title={t("kb.copy")}
+            >
+              <Copy className="w-3.5 h-3.5" />
+            </button>
             <button
               onClick={() => navigate(`/kb/${kbId}/search`)}
               className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90"
@@ -308,12 +335,6 @@ export function KBSettings() {
                             <span>{doc.chunk_count} {t("kb.chunks")}</span>
                           </>
                         )}
-                        {doc.embedding_model && (
-                          <>
-                            <span>·</span>
-                            <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded">{doc.embedding_model}</span>
-                          </>
-                        )}
                         {isParseFailed && doc.parse_error && (
                           <>
                             <span>·</span>
@@ -355,6 +376,13 @@ export function KBSettings() {
                       </button>
                     )}
                     <button
+                      onClick={() => handleOpenInExplorer(doc)}
+                      className="p-1.5 hover:bg-muted rounded-md text-muted-foreground hover:text-foreground"
+                      title="Open file location"
+                    >
+                      <FolderSearch className="w-4 h-4" />
+                    </button>
+                    <button
                       onClick={() => navigate(`/kb/${kbId}/documents/${doc.id}`)}
                       className="p-1.5 hover:bg-muted rounded-md"
                       title={t("docs.preview")}
@@ -386,6 +414,7 @@ export function KBSettings() {
         onConfirm={handleDeleteConfirm}
         onCancel={() => setDeleteTarget(null)}
       />
+
     </div>
   );
 }

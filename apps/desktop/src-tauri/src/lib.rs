@@ -68,6 +68,15 @@ pub fn run() {
             });
             app.manage(python_service::PythonProcess(Mutex::new(None)));
 
+            // Register window close handler to kill Python backend
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.on_window_event(move |event| {
+                    if let tauri::WindowEvent::Destroyed = event {
+                        python_service::force_kill_backend();
+                    }
+                });
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -77,6 +86,7 @@ pub fn run() {
             // Knowledge base commands
             knowledge_base::create_kb,
             knowledge_base::rename_kb,
+            knowledge_base::copy_kb,
             knowledge_base::delete_kb,
             knowledge_base::list_kbs,
             knowledge_base::get_kb,
@@ -86,6 +96,7 @@ pub fn run() {
             documents::list_documents,
             documents::get_document_content,
             documents::save_document_chunks,
+            documents::reveal_document_in_explorer,
             // Parsing commands
             parsing::start_parsing,
             parsing::poll_parse_status,

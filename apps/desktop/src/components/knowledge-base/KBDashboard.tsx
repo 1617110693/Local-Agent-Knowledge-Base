@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useKBStore } from "../../stores/useKBStore";
 import { useI18n } from "../../i18n";
-import { Plus, Trash2, FolderOpen, BookOpen, FileText } from "lucide-react";
+import { Plus, Trash2, FolderOpen, BookOpen, FileText, Layers } from "lucide-react";
 import { ConfirmDialog } from "../common/ConfirmDialog";
 
 export function KBDashboard() {
@@ -76,8 +76,19 @@ export function KBDashboard() {
                 <div>
                   <h3 className="font-semibold">{kb.name}</h3>
                   {kb.description && <p className="text-sm text-muted-foreground">{kb.description}</p>}
-                  <div className="flex gap-3 mt-1 text-xs text-muted-foreground">
+                  <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1 text-xs text-muted-foreground">
                     <span className="flex items-center gap-1"><FileText className="w-3 h-3" />{kb.document_count} {t("kb.docs")}</span>
+                    {kb.chunk_count > 0 && (
+                      <span className="flex items-center gap-1"><Layers className="w-3 h-3" />{kb.chunk_count} {t("kb.chunks")}</span>
+                    )}
+                    {kb.embedding_model && (
+                      <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded font-medium">
+                        {kb.embedding_model}
+                      </span>
+                    )}
+                    {kb.embedding_dim > 0 && (
+                      <span>dim {kb.embedding_dim}</span>
+                    )}
                   </div>
                 </div>
               </div>

@@ -3,7 +3,7 @@ import { Link, useLocation, useParams } from "react-router-dom";
 import { useKBStore } from "../../stores/useKBStore";
 import { useSettingsStore } from "../../stores/useSettingsStore";
 import { useI18n } from "../../i18n";
-import { BookOpen, Search, Settings, FolderOpen, Upload, AlertCircle, X } from "lucide-react";
+import { BookOpen, Settings, FolderOpen, AlertCircle, X, Layers } from "lucide-react";
 
 export function Sidebar() {
   const location = useLocation();
@@ -14,13 +14,13 @@ export function Sidebar() {
   const [showError, setShowError] = useState(false);
 
   useEffect(() => { loadKBs(); }, []);
-  const isActive = (path: string) => location.pathname === path;
+  const isActive = (path: string) => location.pathname === path || location.pathname.startsWith(path + "/");
 
   return (
     <>
       <aside className="w-56 bg-card border-r flex flex-col h-full shrink-0">
-        {/* App title */}
-        <div className="p-4 border-b">
+        {/* App title + status */}
+        <div className="p-4 border-b shrink-0">
           <h1 className="text-sm font-semibold flex items-center gap-2">
             <BookOpen className="w-4 h-4 text-primary" />
             {t("app.title")}
@@ -46,46 +46,50 @@ export function Sidebar() {
           )}
         </div>
 
-        {/* Navigation */}
-        <nav className="flex-1 overflow-auto py-2 px-2 space-y-0.5">
-          <Link to="/" className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm transition-colors ${
-            isActive("/") ? "bg-primary/10 text-primary font-medium" : "hover:bg-muted text-muted-foreground"
-          }`}>
-            <FolderOpen className="w-4 h-4" />{t("nav.knowledgeBases")}
+        {/* Knowledge Bases — scrollable */}
+        <div className="flex-1 overflow-y-auto py-2 px-2 space-y-0.5">
+          {/* Dashboard link */}
+          <Link
+            to="/"
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm transition-colors ${
+              isActive("/") && !kbId ? "bg-primary/10 text-primary font-medium" : "hover:bg-muted text-muted-foreground"
+            }`}
+          >
+            <FolderOpen className="w-4 h-4" />
+            {t("nav.knowledgeBases")}
           </Link>
 
-          {kbId && (
-            <>
-              <div className="mt-3 mb-1 px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                {t("nav.currentKB")}
-              </div>
-              <Link to={`/kb/${kbId}`} className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm transition-colors ${
-                isActive(`/kb/${kbId}`) ? "bg-primary/10 text-primary font-medium" : "hover:bg-muted text-muted-foreground"
-              }`}>
-                <Upload className="w-4 h-4" />{t("nav.documents")}
-              </Link>
-              <Link to={`/kb/${kbId}/search`} className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm transition-colors ${
-                isActive(`/kb/${kbId}/search`) ? "bg-primary/10 text-primary font-medium" : "hover:bg-muted text-muted-foreground"
-              }`}>
-                <Search className="w-4 h-4" />{t("nav.search")}
-              </Link>
-            </>
+          {/* KB list — indented under "知识库" */}
+          {knowledgeBases.length > 0 && (
+            <div className="ml-4 border-l border-border/50 pl-2 space-y-0.5 mt-0.5">
+              {knowledgeBases.map((kb) => (
+                <Link
+                  key={kb.id}
+                  to={`/kb/${kb.id}`}
+                  className={`flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors ${
+                    kbId === kb.id ? "bg-primary/10 text-primary font-medium" : "hover:bg-muted text-muted-foreground"
+                  }`}
+                >
+                  <Layers className="w-3 h-3 shrink-0" />
+                  <span className="truncate">{kb.name}</span>
+                  <span className="text-[10px] text-muted-foreground/60 ml-auto shrink-0">{kb.document_count}</span>
+                </Link>
+              ))}
+            </div>
           )}
+        </div>
 
-          <div className="mt-3 mb-1 px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-            {t("nav.system")}
-          </div>
-          <Link to="/settings" className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm transition-colors ${
-            isActive("/settings") ? "bg-primary/10 text-primary font-medium" : "hover:bg-muted text-muted-foreground"
-          }`}>
-            <Settings className="w-4 h-4" />{t("nav.settings")}
+        {/* Settings — fixed to bottom */}
+        <div className="p-2 border-t shrink-0">
+          <Link
+            to="/settings"
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm transition-colors ${
+              isActive("/settings") ? "bg-primary/10 text-primary font-medium" : "hover:bg-muted text-muted-foreground"
+            }`}
+          >
+            <Settings className="w-4 h-4" />
+            {t("nav.settings")}
           </Link>
-        </nav>
-
-        <div className="p-2 border-t">
-          <p className="text-xs text-muted-foreground px-2 mb-1">
-            {t("nav.knowledgeBaseCount", { count: knowledgeBases.length })}
-          </p>
         </div>
       </aside>
 

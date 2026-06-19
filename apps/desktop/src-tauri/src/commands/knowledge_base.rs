@@ -22,6 +22,14 @@ pub async fn rename_kb(
 }
 
 #[tauri::command]
+pub async fn copy_kb(
+    state: State<'_, AppState>,
+    kb_id: String,
+) -> CommandResult<KnowledgeBase> {
+    state.file_store.copy_kb(&kb_id)
+}
+
+#[tauri::command]
 pub async fn delete_kb(
     state: State<'_, AppState>,
     kb_id: String,

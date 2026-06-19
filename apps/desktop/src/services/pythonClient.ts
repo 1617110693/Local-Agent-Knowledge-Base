@@ -56,10 +56,22 @@ export async function indexDocument(params: {
     chunk_overlap?: number;
   };
 }): Promise<{ doc_id: string; chunk_count: number; status: string; embedding_model: string; embedding_dim: number }> {
-  return pythonFetch("/index", {
+  const result = await pythonFetch<{
+    doc_id: string;
+    chunk_count: number;
+    status: string;
+    embedding_model?: string;
+    embedding_dim?: number;
+  }>("/index", {
     method: "POST",
     body: JSON.stringify(params),
   });
+  // Ensure defaults for older backends that don't return these fields
+  return {
+    ...result,
+    embedding_model: result.embedding_model || "",
+    embedding_dim: result.embedding_dim || 0,
+  };
 }
 
 // ── Chat ──
@@ -127,6 +139,13 @@ export async function chatStream(
 }
 
 // ── KB Management ──
+
+export async function copyKbLanceDb(sourceKbId: string, targetKbId: string): Promise<{ status: string }> {
+  return pythonFetch("/kb/copy", {
+    method: "POST",
+    body: JSON.stringify({ source_kb_id: sourceKbId, target_kb_id: targetKbId }),
+  });
+}
 
 export async function backupKb(kbId: string): Promise<{ kb_id: string; backup_path: string; status: string }> {
   return pythonFetch(`/kb/${kbId}/backup`, { method: "POST" });

@@ -48,7 +48,7 @@ export function SettingsPanel() {
     setSaved(true); setTimeout(() => setSaved(false), 2000);
   };
 
-  const update = (field: keyof AppSettings, value: string | number) =>
+  const update = (field: keyof AppSettings, value: string | number | boolean) =>
     setForm((p) => ({ ...p, [field]: value }));
 
   return (

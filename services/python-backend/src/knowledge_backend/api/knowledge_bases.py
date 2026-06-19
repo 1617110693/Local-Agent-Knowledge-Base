@@ -47,12 +47,53 @@ def delete_kb(kb_id: str):
         db.close()
 
 
+class CopyKBRequest(BaseModel):
+    source_kb_id: str
+    target_kb_id: str
+
+
 @router.get("/kb/{kb_id}/stats")
 def get_kb_stats(kb_id: str):
     config = get_config()
     db = LanceDBManager(Path(config.knowledge_base_data_dir) / "lancedb_data")
     try:
         return db.get_kb_stats(kb_id)
+    finally:
+        db.close()
+
+
+@router.post("/kb/copy")
+def copy_kb(req: CopyKBRequest):
+    """Copy a LanceDB table from source KB to target KB."""
+    config = get_config()
+    db = LanceDBManager(Path(config.knowledge_base_data_dir) / "lancedb_data")
+    try:
+        source_table = db.get_table(req.source_kb_id)
+        if source_table is None:
+            raise HTTPException(404, f"Source KB not found: {req.source_kb_id}")
+        if db.table_exists(req.target_kb_id):
+            db.drop_table(req.target_kb_id)
+
+        # Copy LanceDB table data
+        df = source_table.to_pandas()
+        # Determine embedding dimension from existing table
+        schema = source_table.schema
+        embedding_dim = None
+        for field in schema:
+            if field.name == "vector":
+                embedding_dim = field.type.list_size
+                break
+
+        target_table = db.create_table(req.target_kb_id, embedding_dim or 1536)
+        if not df.empty:
+            target_table.add(df.to_dict("records"))
+
+        return {
+            "source_kb_id": req.source_kb_id,
+            "target_kb_id": req.target_kb_id,
+            "status": "copied",
+            "rows": len(df),
+        }
     finally:
         db.close()
 

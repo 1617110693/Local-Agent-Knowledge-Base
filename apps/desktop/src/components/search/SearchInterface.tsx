@@ -1,13 +1,16 @@
 import { useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import { search as searchAPI } from "../../services/pythonClient";
+import { useSettingsStore } from "../../stores/useSettingsStore";
 import { useI18n } from "../../i18n";
-import { Search, Loader2, FileText } from "lucide-react";
+import { Search, Loader2, FileText, ArrowLeft } from "lucide-react";
 import type { SearchResult } from "../../types";
 
 export function SearchInterface() {
   const { kbId } = useParams<{ kbId: string }>();
+  const navigate = useNavigate();
   const { t } = useI18n();
+  const { settings } = useSettingsStore();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [searching, setSearching] = useState(false);
@@ -28,6 +31,13 @@ export function SearchInterface() {
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
+      <button
+        onClick={() => navigate(`/kb/${kbId}`)}
+        className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground mb-4 transition-colors"
+      >
+        <ArrowLeft className="w-4 h-4" />
+        Back
+      </button>
       <h2 className="text-2xl font-bold mb-6">{t("search.title")}</h2>
 
       <div className="flex gap-2 mb-4">
@@ -54,6 +64,9 @@ export function SearchInterface() {
           <input type="checkbox" checked={rerank} onChange={(e) => setRerank(e.target.checked)} className="rounded" />
           {t("search.rerank")}
         </label>
+        {rerank && settings.rerank_model && (
+          <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded self-center">{settings.rerank_model}</span>
+        )}
       </div>
 
       {error && <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 mb-4">{error}</div>}

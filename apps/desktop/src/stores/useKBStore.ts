@@ -14,6 +14,7 @@ interface KBState {
   loadDocuments: (kbId: string) => Promise<void>;
   createKB: (name: string, description: string) => Promise<void>;
   renameKB: (kbId: string, name: string) => Promise<void>;
+  copyKB: (kbId: string) => Promise<void>;
   deleteKB: (kbId: string) => Promise<void>;
   setActiveKB: (kb: KnowledgeBase | null) => void;
   uploadDocument: (kbId: string, filePath: string) => Promise<void>;
@@ -64,6 +65,20 @@ export const useKBStore = create<KBState>((set, get) => ({
     }));
   },
 
+  copyKB: async (kbId: string) => {
+    const kb = await tauriBridge.copyKB(kbId);
+    set((s) => ({
+      knowledgeBases: [...s.knowledgeBases, kb],
+    }));
+    // Also copy LanceDB table data via Python backend
+    try {
+      const { copyKbLanceDb } = await import("../services/pythonClient");
+      await copyKbLanceDb(kbId, kb.id);
+    } catch (e) {
+      console.error("LanceDB copy failed (docs still copied):", e);
+    }
+  },
+
   deleteKB: async (kbId: string) => {
     await tauriBridge.deleteKB(kbId);
     set((s) => ({
@@ -72,14 +87,27 @@ export const useKBStore = create<KBState>((set, get) => ({
     }));
   },
 
-  setActiveKB: (kb) => set({ activeKB: kb, documents: [] }),
+  setActiveKB: (kb) => set({ activeKB: kb }),
 
   uploadDocument: async (kbId: string, filePath: string) => {
-    // 1. Upload
+    // 1. Check embedding model consistency
+    const kbs = get().knowledgeBases;
+    const kb = kbs.find((k) => k.id === kbId);
+    if (kb && kb.embedding_model) {
+      const { getSettings } = await import("../services/tauriBridge");
+      const settings = await getSettings();
+      if (settings.embedding_model && settings.embedding_model !== kb.embedding_model) {
+        throw new Error(
+          `Embedding model mismatch: this knowledge base uses "${kb.embedding_model}" (dim ${kb.embedding_dim}), but current settings use "${settings.embedding_model}". Please switch the embedding model in settings or use "Re-index All" to rebind.`
+        );
+      }
+    }
+
+    // 2. Upload
     const doc = await tauriBridge.uploadDocument(kbId, filePath);
     set((s) => ({ documents: [doc, ...s.documents] }));
 
-    // 2. Parse (instant for .md/.txt, async via MinerU for others)
+    // 3. Parse
     let parsed = doc;
     try {
       await tauriBridge.startParsing(kbId, doc.id);
@@ -89,7 +117,7 @@ export const useKBStore = create<KBState>((set, get) => ({
       documents: s.documents.map((d) => (d.id === doc.id ? parsed : d)),
     }));
 
-    // 3. Index (if parsing succeeded)
+    // 4. Index (if parsing succeeded)
     if (parsed.parse_status === "done") {
       set((s) => ({ indexingIds: new Set([...s.indexingIds, doc.id]) }));
       try {
@@ -110,6 +138,10 @@ export const useKBStore = create<KBState>((set, get) => ({
             d.id === doc.id ? { ...d, chunk_count: result.chunk_count, embedding_model: result.embedding_model } : d
           ),
           indexingIds: new Set([...s.indexingIds].filter((id) => id !== doc.id)),
+          // Update KB's embedding model (auto-bind on first index)
+          knowledgeBases: s.knowledgeBases.map((k) =>
+            k.id === kbId ? { ...k, embedding_model: result.embedding_model, embedding_dim: result.embedding_dim } : k
+          ),
         }));
       } catch (e) {
         console.error("Auto-index failed:", e);
@@ -150,6 +182,9 @@ export const useKBStore = create<KBState>((set, get) => ({
       set((s) => ({
         documents: s.documents.map((d) =>
           d.id === docId ? { ...d, chunk_count: result.chunk_count, embedding_model: result.embedding_model } : d
+        ),
+        knowledgeBases: s.knowledgeBases.map((k) =>
+          k.id === kbId ? { ...k, embedding_model: result.embedding_model, embedding_dim: result.embedding_dim, chunk_count: k.chunk_count } : k
         ),
         indexingIds: new Set([...s.indexingIds].filter((id) => id !== docId)),
       }));

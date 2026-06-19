@@ -35,6 +35,10 @@ export async function renameKB(kbId: string, name: string): Promise<KnowledgeBas
   return invoke("rename_kb", { kbId, name });
 }
 
+export async function copyKB(kbId: string): Promise<KnowledgeBase> {
+  return invoke("copy_kb", { kbId });
+}
+
 export async function deleteKB(kbId: string): Promise<void> {
   return invoke("delete_kb", { kbId });
 }
@@ -72,6 +76,10 @@ export async function getDocumentContent(
   docId: string
 ): Promise<DocumentContent> {
   return invoke("get_document_content", { kbId, docId });
+}
+
+export async function revealDocumentInExplorer(kbId: string, docId: string): Promise<string> {
+  return invoke("reveal_document_in_explorer", { kbId, docId });
 }
 
 export async function saveDocumentChunks(

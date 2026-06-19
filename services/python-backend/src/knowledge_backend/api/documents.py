@@ -54,7 +54,13 @@ def index_document(req: IndexRequest):
         )
 
         if not chunks:
-            return {"doc_id": req.doc_id, "chunk_count": 0, "status": "no_content"}
+            return {
+                "doc_id": req.doc_id,
+                "chunk_count": 0,
+                "status": "no_content",
+                "embedding_model": config.embedding_model,
+                "embedding_dim": embedding_dim,
+            }
 
         texts = [c.content for c in chunks]
         vectors = embedder.embed(texts)

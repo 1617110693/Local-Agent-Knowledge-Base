@@ -79,6 +79,42 @@ impl FileStore {
         Ok(result)
     }
 
+    pub fn copy_kb(&self, kb_id: &str) -> CommandResult<KnowledgeBase> {
+        let registry = self.load_registry()?;
+        let source = registry
+            .knowledge_bases
+            .iter()
+            .find(|kb| kb.id == kb_id)
+            .ok_or_else(|| AppError::NotFound(format!("Knowledge base not found: {}", kb_id)))?
+            .clone();
+
+        let new_id = Uuid::new_v4().to_string();
+        let new_kb = KnowledgeBase {
+            id: new_id.clone(),
+            name: format!("{} (copy)", source.name),
+            description: source.description.clone(),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            document_count: source.document_count,
+            chunk_count: source.chunk_count,
+            embedding_model: source.embedding_model.clone(),
+            embedding_dim: source.embedding_dim,
+        };
+
+        let mut registry = self.load_registry()?;
+        registry.knowledge_bases.push(new_kb.clone());
+        self.save_registry(&registry)?;
+
+        // Copy KB directory (documents)
+        let src_dir = self.root_dir.join(format!("kb_{}", kb_id));
+        let dst_dir = self.root_dir.join(format!("kb_{}", new_id));
+        if src_dir.exists() {
+            copy_dir_recursive(&src_dir, &dst_dir)?;
+        }
+
+        Ok(new_kb)
+    }
+
     pub fn delete_kb(&self, kb_id: &str) -> CommandResult<()> {
         let mut registry = self.load_registry()?;
         registry.knowledge_bases.retain(|kb| kb.id != kb_id);
@@ -324,4 +360,19 @@ impl FileStore {
     pub fn root_dir(&self) -> &PathBuf {
         &self.root_dir
     }
+}
+
+fn copy_dir_recursive(src: &PathBuf, dst: &PathBuf) -> CommandResult<()> {
+    std::fs::create_dir_all(dst)?;
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let src_path = entry.path();
+        let dst_path = dst.join(entry.file_name());
+        if src_path.is_dir() {
+            copy_dir_recursive(&src_path, &dst_path)?;
+        } else {
+            std::fs::copy(&src_path, &dst_path)?;
+        }
+    }
+    Ok(())
 }

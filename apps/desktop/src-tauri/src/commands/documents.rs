@@ -104,6 +104,51 @@ pub async fn get_document_content(
 }
 
 #[tauri::command]
+pub async fn reveal_document_in_explorer(
+    state: State<'_, AppState>,
+    kb_id: String,
+    doc_id: String,
+) -> CommandResult<String> {
+    let doc = state.file_store.get_document(&kb_id, &doc_id)?;
+    let doc_dir = state.file_store.get_doc_dir(&kb_id, &doc_id);
+    let original_path = doc_dir.join(format!("original.{}", doc.file_type));
+
+    if !original_path.exists() {
+        return Err(AppError::NotFound(format!(
+            "Original file not found: {}",
+            original_path.display()
+        )));
+    }
+
+    let path_str = original_path.to_string_lossy().to_string();
+
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer")
+            .args(["/select,", &path_str])
+            .spawn()
+            .map_err(|e| AppError::PythonBackend(format!("Failed to open explorer: {}", e)))?;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .args(["-R", &path_str])
+            .spawn()
+            .map_err(|e| AppError::PythonBackend(format!("Failed to open Finder: {}", e)))?;
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let parent = original_path.parent().map(|p| p.to_string_lossy().to_string()).unwrap_or(path_str.clone());
+        std::process::Command::new("xdg-open")
+            .arg(&parent)
+            .spawn()
+            .map_err(|e| AppError::PythonBackend(format!("Failed to open file manager: {}", e)))?;
+    }
+
+    Ok(path_str)
+}
+
+#[tauri::command]
 pub async fn save_document_chunks(
     state: State<'_, AppState>,
     kb_id: String,

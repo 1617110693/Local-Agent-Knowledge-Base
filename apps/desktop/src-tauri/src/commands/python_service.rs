@@ -14,10 +14,46 @@ impl Drop for PythonProcess {
     fn drop(&mut self) {
         if let Ok(mut guard) = self.0.lock() {
             if let Some(ref mut child) = *guard {
+                // Try graceful kill first
                 let _ = child.kill();
                 let _ = child.wait();
             }
         }
+        // Force-kill any remaining knowledge-backend processes (Windows)
+        #[cfg(target_os = "windows")]
+        {
+            let _ = std::process::Command::new("taskkill")
+                .args(["/F", "/IM", "knowledge-backend.exe"])
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .spawn();
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            let _ = std::process::Command::new("pkill")
+                .args(["-f", "knowledge-backend"])
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .spawn();
+        }
+    }
+}
+
+/// Explicitly kill the Python backend (call from app cleanup)
+pub fn force_kill_backend() {
+    #[cfg(target_os = "windows")]
+    {
+        let _ = std::process::Command::new("taskkill")
+            .args(["/F", "/IM", "knowledge-backend.exe"])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .output();
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = std::process::Command::new("pkill")
+            .args(["-9", "-f", "knowledge-backend"])
+            .output();
     }
 }
 
