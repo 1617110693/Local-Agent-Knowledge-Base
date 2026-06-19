@@ -40,40 +40,42 @@ pub async fn get_mcp_config_json(
 ) -> CommandResult<String> {
     let data_dir = state.file_store.root_dir().to_string_lossy().to_string();
 
-    let (command, args): (String, Vec<String>) = {
-        // Production: check for bundled sidecar
-        if let Ok(current) = std::env::current_exe() {
-            if let Some(dir) = current.parent() {
-                for name in &[
-                    "local-kb-mcp.exe",
-                    "local-kb-mcp",
-                    "local-kb-mcp-x86_64-pc-windows-msvc.exe",
-                    "local-kb-mcp-aarch64-apple-darwin",
-                    "local-kb-mcp-x86_64-unknown-linux-gnu",
-                ] {
-                    let sidecar = dir.join(name);
-                    if sidecar.exists() {
-                        if let Ok(meta) = std::fs::metadata(&sidecar) {
-                            if meta.len() > 1024 {
-                                let config = serde_json::json!({
+    // Production: check for bundled sidecar
+    if let Ok(current) = std::env::current_exe() {
+        if let Some(dir) = current.parent() {
+            for name in &[
+                "local-kb-mcp.exe",
+                "local-kb-mcp",
+                "local-kb-mcp-x86_64-pc-windows-msvc.exe",
+                "local-kb-mcp-aarch64-apple-darwin",
+                "local-kb-mcp-x86_64-unknown-linux-gnu",
+            ] {
+                let sidecar = dir.join(name);
+                if sidecar.exists() {
+                    if let Ok(meta) = std::fs::metadata(&sidecar) {
+                        if meta.len() > 1024 {
+                            let config = serde_json::json!({
+                                "mcpServers": {
                                     "local-knowledge-base": {
                                         "command": sidecar.to_string_lossy(),
                                         "env": {
                                             "KNOWLEDGE_BASE_DATA_DIR": &data_dir,
                                         }
                                     }
-                                });
-                                return Ok(serde_json::to_string_pretty(&config).unwrap_or_default());
-                            }
+                                }
+                            });
+                            return Ok(serde_json::to_string_pretty(&config).unwrap_or_default());
                         }
                     }
                 }
             }
         }
+    }
 
-        // Dev mode: use uv run
-        let mcp_dir = resolve_mcp_source_dir();
-        let config = serde_json::json!({
+    // Dev mode: use uv run
+    let mcp_dir = resolve_mcp_source_dir();
+    let config = serde_json::json!({
+        "mcpServers": {
             "local-knowledge-base": {
                 "command": "uv",
                 "args": ["run", "--directory", &mcp_dir.to_string_lossy(), "local-kb-mcp"],
@@ -81,9 +83,9 @@ pub async fn get_mcp_config_json(
                     "KNOWLEDGE_BASE_DATA_DIR": &data_dir,
                 }
             }
-        });
-        return Ok(serde_json::to_string_pretty(&config).unwrap_or_default());
-    };
+        }
+    });
+    Ok(serde_json::to_string_pretty(&config).unwrap_or_default())
 }
 
 #[tauri::command]
@@ -99,7 +101,13 @@ pub async fn configure_claude_mcp(
         // Production: check for bundled sidecar next to the exe
         if let Ok(current) = std::env::current_exe() {
             if let Some(dir) = current.parent() {
-                for name in &["local-kb-mcp.exe", "local-kb-mcp"] {
+                for name in &[
+                    "local-kb-mcp.exe",
+                    "local-kb-mcp",
+                    "local-kb-mcp-x86_64-pc-windows-msvc.exe",
+                    "local-kb-mcp-aarch64-apple-darwin",
+                    "local-kb-mcp-x86_64-unknown-linux-gnu",
+                ] {
                     let sidecar = dir.join(name);
                     if sidecar.exists() {
                         if let Ok(meta) = std::fs::metadata(&sidecar) {
