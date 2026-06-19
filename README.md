@@ -11,77 +11,85 @@ A local-first desktop knowledge base application designed for AI agent integrati
 ## Features
 
 ### 📄 Document Management
-- **Multi-format support**: PDF, DOCX, PPTX, XLSX, images (PNG/JPG/WebP), HTML, **Markdown (.md)**, plain text (.txt)
-- **Drag & drop upload** with file type validation
+- **Multi-format support**: PDF, DOCX, PPTX, XLSX, images (PNG/JPG/WebP), HTML, Markdown (.md), plain text (.txt)
+- **Drag & drop upload** with multi-file selection
 - **Auto-parse + auto-index pipeline**: upload → parse → index is fully automatic
 - **Markdown & plain text** files are indexed instantly without MinerU
-- **MinerU integration** for high-quality document parsing:
-  - 🎯 **Precise mode** (v4 extract/task): Token auth, ≤200MB, ≤200 pages, tables/formulas
-  - ⚡ **Agent mode** (v1 agent/parse): No auth, ≤10MB, ≤20 pages, for AI workflows
-- **Markdown preview** of parsed documents
-- **Parse & index progress** tracking with real-time status indicators
+- **Large PDF auto-split**: PDFs exceeding 200 pages or 200MB are automatically split into parts before parsing
+- **MinerU integration** for high-quality document parsing (requires token):
+  - 🎯 **Precise mode**: Token auth, ≤200MB, ≤200 pages, tables/formulas
+  - HTML files automatically use `MinerU-HTML` parser
+- **Markdown preview** with LaTeX math rendering (KaTeX)
+- **Real-time status indicators**: pending → parsing → done/failed
 
 ### 🔍 Knowledge Management
 - **Multiple knowledge bases** with independent indexes
-- **Intelligent chunking** strategies:
-  - **Recursive** (recommended) — paragraph → sentence → fixed-size
-  - **Semantic** — sentence boundary aware
-  - **Fixed-size** — configurable with overlap
+- **KB operations**: create, rename, copy (with LanceDB data), delete
+- **KB-level embedding model binding** — ensures index consistency; warns on mismatch
+- **One-click re-index** for individual documents or entire KB (with backup)
+- **Per-document re-index** button for model migration
+- **Intelligent chunking** strategies: Recursive (recommended), Semantic, Fixed-size
 - **Hybrid search**: Dense vector + BM25 keyword (FTS)
-- **Reranking** for search result refinement
+- **Reranking** with model name display
 
 ### 🤖 AI Model Integration (OpenAI-compatible)
-- **Embedding**: OpenAI, Azure, Ollama, vLLM, LiteLLM, LM Studio, or any `/v1/embeddings` endpoint
+- **Embedding**: OpenAI, ZhipuAI/BigModel, Ollama, vLLM, LiteLLM, or any `/v1/embeddings` endpoint
 - **Rerank**: Jina AI, Cohere, DashScope (Qwen3-rerank), or any compatible endpoint
+- **Test Connection** buttons for both embedding and rerank
 - **100% provider-agnostic** — you control the models
 
 ### 🔌 MCP Server (Model Context Protocol)
-- **3 tools** for AI agents:
+- **5 tools** for AI agents:
   - `search_knowledge_base` — Hybrid search with reranking
-  - `list_knowledge_bases` — List all KBs with stats
-  - `get_document` — Full document retrieval
+  - `list_knowledge_bases` — List all KBs with stats, detect orphans
+  - `get_document` — Full document retrieval with optional chunk details
+  - `create_knowledge_base` — Create new KB via agent
+  - `delete_knowledge_base` — Delete KB and all data
+  - `rename_knowledge_base` — Rename a KB
 - **stdio transport** — runs as a subprocess
-- **`uv run`** — zero-config launch
+- **Reads `settings.json`** for API keys (no duplicate config needed)
 - **No dependency** on the desktop app — reads LanceDB directly
-- Designed for **Claude Code**, but works with any MCP client
-- LLM-powered Q&A is handled by the agent itself (e.g. Claude Code) using the search results
+- Designed for **Claude Code**, works with any MCP client
 
 ### 🎨 Desktop UI
 - **Custom frameless window** with integrated title bar
-- **Dark/light mode** and **English/Chinese** language switcher
-- **Sidebar navigation** with KB list
-- **Dashboard** with KB statistics
-- **Document manager** with upload, parse, index, and preview
-- **Search interface** with toggleable hybrid/vector/keyword modes
-- **Settings panel** for all API keys and model configurations
+- **Dark/light/system theme** toggle (☀️/🌙/🖥️)
+- **English/Chinese** localization
+- **Sidebar** with KB list (scrollable) + Settings fixed at bottom
+- **KB workspace** with stats, document management, and search
+- **Document preview** with LaTeX math support
+- **Search interface** with hybrid/vector/keyword modes and rerank model display
+- **Settings panel** with connection testing and MCP config generator
 
 ---
 
 ## Architecture
 
-```mermaid
-graph TB
-    subgraph App["🏠 Local Knowledge Base"]
-        React["⚛️ React Frontend<br/>TypeScript + Vite"]
-        Rust["🦀 Rust Backend<br/>Tauri v2"]
-        Python["🐍 Python Service<br/>FastAPI"]
-        MCP["🔌 MCP Server<br/>FastMCP / stdio"]
-        DB[("💾 LanceDB<br/>Embedded")]
-        MinerU["📄 MinerU API"]
-        Embed["🧠 Embedding API"]
-        Rerank["📊 Rerank API"]
-    end
-
-    React <-->|"Tauri IPC"| Rust
-    React -->|"HTTP REST"| Python
-    Rust -->|"spawns"| Python
-    Rust -->|"parse docs"| MinerU
-    Python -->|"chunk + embed + search"| DB
-    Python -->|"embeddings"| Embed
-    Python -->|"rerank"| Rerank
-    MCP -->|"direct read"| DB
-    MCP -->|"embeddings"| Embed
-    MCP -->|"rerank"| Rerank
+```
+┌─────────────────────────────────────────────────────┐
+│                   Desktop App (Tauri)               │
+│  ┌──────────┐   ┌──────────┐   ┌────────────────┐   │
+│  │  React   │◄──│  Rust    │──►│  MinerU API    │   │
+│  │  Frontend│   │  Backend │   │  (doc parsing) │   │
+│  └────┬─────┘   └────┬─────┘   └────────────────┘   │
+│       │              │                              │
+│       │        spawns|                              │
+│       ▼              ▼                              │
+│  ┌─────────────────────────┐   ┌────────────────┐   │
+│  │   Python Backend        │   │   MCP Server   │   │
+│  │   (FastAPI)             │   │   (FastMCP)    │   │
+│  │   • Chunk + Embed       │   │   • Search     │   │
+│  │   • Vector Search       │   │   • KB Mgmt    │   │
+│  │   • Index Mgmt          │   │   • Documents  │   │
+│  └───────────┬─────────────┘   └───────┬────────┘   │
+│              │                         │            │
+│              └─────────┬───────────────┘            │
+│                        ▼                            │
+│              ┌─────────────────┐                    │
+│              │    LanceDB      │                    │
+│              │  (Embedded DB)  │                    │
+│              └─────────────────┘                    │
+└─────────────────────────────────────────────────────┘
 ```
 
 ### Technology Stack
@@ -90,10 +98,11 @@ graph TB
 |-------|-----------|
 | Desktop Shell | [Tauri v2](https://tauri.app/) (Rust) |
 | Frontend | React 18 + TypeScript + Vite + Tailwind CSS |
-| State | Zustand + TanStack React Query |
+| State | Zustand |
 | Backend | FastAPI + uvicorn (Python) |
 | Vector DB | [LanceDB](https://lancedb.com/) (embedded) |
 | MCP Server | [FastMCP](https://github.com/jlowin/fastmcp) (Python) |
+| PDF Utils | [pypdf](https://pypi.org/project/pypdf/) |
 | Toolchain | npm, uv, cargo |
 
 ---
@@ -112,33 +121,30 @@ graph TB
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/local-knowledge-base.git
+git clone https://github.com/1617110693/Local-Agent-Knowledge-Base.git
 cd local-knowledge-base
 
-# Install frontend dependencies (from workspace root)
+# Install frontend dependencies
 npm install
 
-# Install Python backend dependencies
+# Install Python dependencies
 cd services/python-backend && uv sync && cd ../..
-
-# Install MCP server dependencies
 cd apps/mcp-server && uv sync && cd ../..
 
 # Launch the desktop app
-cd apps/desktop
 npm run tauri dev
 ```
 
 ### First Launch
 
-1. The app starts and auto-launches the Python backend
-2. Go to **Settings** and configure your API keys:
-   - **Embedding API**: OpenAI, Ollama, or any compatible provider
-   - **Rerank API** (optional): Jina AI or Cohere
-   - **MinerU Token** (optional): For high-quality parsing of large documents
+1. The app auto-launches the Python backend on port 17390
+2. Go to **Settings** and configure:
+   - **Embedding API**: provider URL, key, and model name
+   - **Rerank API** (optional): for better search results
+   - **MinerU Token** (recommended): for PDF/DOC parsing
 3. Create a **Knowledge Base**
-4. **Upload documents** — auto-parsed and auto-indexed; markdown files are instant
-5. **Search** your knowledge base, or connect Claude Code via the MCP server for AI-powered Q&A
+4. **Upload documents** — drag & drop, multi-select supported
+5. **Search** or connect **Claude Code** via the MCP server
 
 ---
 
@@ -146,11 +152,10 @@ npm run tauri dev
 
 ### Settings Reference
 
-All settings are managed through the desktop app UI. They are persisted to `settings.json` in the app data directory.
-
 | Setting | Description | Default |
 |---------|-------------|---------|
-| `mineru_token` | MinerU API token for precise parsing | (empty) |
+| `data_dir` | Custom data storage path | `~/.local-knowledge-base` |
+| `mineru_token` | MinerU API token for parsing | (empty) |
 | `embedding_api_base` | Embedding API base URL | `https://api.openai.com/v1` |
 | `embedding_api_key` | Embedding API key | (empty) |
 | `embedding_model` | Embedding model name | `text-embedding-3-small` |
@@ -160,10 +165,9 @@ All settings are managed through the desktop app UI. They are persisted to `sett
 | `chunk_strategy` | Chunking method | `recursive` |
 | `chunk_size` | Characters per chunk | `512` |
 | `chunk_overlap` | Overlap between chunks | `50` |
+| `theme` | UI theme | `system` |
 
 ### OpenAI-compatible Providers
-
-The app works with any OpenAI-compatible API. The **API Base URL** field should include the version path — the app appends only the endpoint name (e.g. `/embeddings`, `/rerank`).
 
 Common configurations:
 
@@ -177,152 +181,84 @@ Embedding: https://api.openai.com/v1  |  text-embedding-3-small
 Embedding: http://localhost:11434/api  |  nomic-embed-text
 ```
 
-**vLLM / LiteLLM (self-hosted)**
-```
-Embedding: http://localhost:8000   |  your-model
-```
-
-**Jina AI (rerank)**
-```
-Rerank:    https://api.jina.ai/v1     |  jina-reranker-v2-base-multilingual
-```
-
-**Cohere (rerank)**
-```
-Rerank:    https://api.cohere.com/v1  |  rerank-english-v3.0
-```
-
 **ZhipuAI / BigModel**
 ```
 Embedding: https://open.bigmodel.cn/api/paas/v4  |  embedding-3
 ```
 
-**DashScope (rerank)**
+**Jina AI (rerank)**
 ```
-Rerank:    https://dashscope.aliyuncs.com/compatible-mode/v1  |  qwen3-rerank
+Rerank: https://api.jina.ai/v1  |  jina-reranker-v2-base-multilingual
 ```
 
-> 💡 The base URL should include the API version prefix (e.g. `/v1`, `/v4`, `/api`). The app appends `/embeddings` or `/rerank` to it. For Ollama, use `http://localhost:11434/api`.
+**Cohere (rerank)**
+```
+Rerank: https://api.cohere.com/v1  |  rerank-english-v3.0
+```
+
+**DashScope (rerank)**
+```
+Rerank: https://dashscope.aliyuncs.com/compatible-mode/v1  |  qwen3-rerank
+```
 
 ### MinerU API Setup
 
 1. Go to [MinerU API Management](https://mineru.net/apiManage/docs)
-2. Create a token in the API management page
-3. Paste the token in the app Settings under "MinerU Token"
+2. Create a token
+3. Paste the token in Settings → MinerU Token
 
-**Without a token**: The app falls back to MinerU's Agent-mode API (no auth, rate-limited, ≤10MB files). This is sufficient for most personal use cases.
-
-**With a token**: Full precise parsing with table/formula recognition, support for files up to 200MB and 200 pages.
+**Without a token**: Falls back to Agent mode (free, rate-limited, ≤10MB, ≤20 pages).
+**With a token**: Full precise parsing — tables, formulas, ≤200MB, ≤200 pages. Large PDFs auto-split.
 
 ---
 
 ## MCP Server Usage
 
-The MCP server enables AI agents (especially **Claude Code**) to search and query your knowledge bases. Claude Code handles the LLM reasoning — the MCP server provides knowledge retrieval.
+The MCP server enables AI agents (especially **Claude Code**) to search and query your knowledge bases.
 
-### Configuration for Claude Code
+### Setup
 
-The MCP server reads API keys from `settings.json` in the data directory — you only need to tell it where that is.
+Open the desktop app → Settings → click **"Configure Claude Code MCP"** to auto-generate the config.
 
-**Development** (`uv run` from source):
+Or use **"Copy MCP Config"** to copy the JSON to clipboard. The config auto-detects whether you're in dev mode or using a packaged build.
 
+**Dev mode** (auto-detected):
 ```json
 {
   "mcpServers": {
     "local-knowledge-base": {
       "command": "uv",
-      "args": [
-        "run",
-        "--directory",
-        "/path/to/local-knowledge-base/apps/mcp-server",
-        "local-kb-mcp"
-      ],
-      "env": {
-        "KNOWLEDGE_BASE_DATA_DIR": "$HOME/.local-knowledge-base"
-      }
+      "args": ["run", "--directory", "/path/to/apps/mcp-server", "local-kb-mcp"],
+      "env": { "KNOWLEDGE_BASE_DATA_DIR": "~/.local-knowledge-base" }
     }
   }
 }
 ```
 
-**Production** (bundled sidecar):
-
+**Production** (auto-detected):
 ```json
 {
   "mcpServers": {
     "local-knowledge-base": {
       "command": "C:\\Program Files\\Local Knowledge Base\\local-kb-mcp.exe",
-      "env": {
-        "KNOWLEDGE_BASE_DATA_DIR": "C:\\Users\\...\\.local-knowledge-base"
-      }
+      "env": { "KNOWLEDGE_BASE_DATA_DIR": "C:\\Users\\...\\.local-knowledge-base" }
     }
   }
 }
 ```
 
-> 💡 API keys are configured in the desktop app Settings UI and stored in `settings.json`. You don't need to duplicate them in the MCP config.
+> 💡 API keys are read from `settings.json` — no need to duplicate them in MCP config.
 
 ### Available MCP Tools
 
-#### `search_knowledge_base`
-
-Search a knowledge base with hybrid search and optional reranking.
-
-```json
-{
-  "query": "What is the architecture of the system?",
-  "kb_id": "your-kb-uuid",
-  "top_k": 10,
-  "search_type": "hybrid",
-  "rerank": true
-}
-```
-
-Returns chunks with scores and source document references.
-
-#### `list_knowledge_bases`
-
-List all available knowledge bases:
-
-```
-No parameters required.
-```
-
-Returns KB IDs, table names, document counts, and chunk counts.
-
-#### `get_document`
-
-Retrieve a document's full text content:
-
-```json
-{
-  "kb_id": "your-kb-uuid",
-  "doc_id": "document-uuid",
-  "include_chunks": false
-}
-```
-
-Returns the complete document text reconstructed from chunks.
-
-### How Claude Code Uses These Tools
-
-When you ask Claude Code a question about your documents, it can:
-1. Call `search_knowledge_base` to find relevant chunks
-2. Use its own reasoning to synthesize an answer from the results
-3. Optionally call `get_document` to read the full source document
-
-This is more powerful than a built-in RAG chatbot because Claude Code can do multi-step reasoning, cross-reference multiple knowledge bases, and combine document knowledge with its general capabilities.
-
-### Running the MCP Server Manually
-
-```bash
-# Development
-cd apps/mcp-server
-uv run local-kb-mcp
-
-# Production (from installed package)
-local-kb-mcp
-```
+| Tool | Description |
+|------|-------------|
+| `search_knowledge_base` | Hybrid search (vector + BM25) with optional reranking |
+| `list_knowledge_bases` | List all KBs, detect orphaned data |
+| `get_document` | Full document text with optional chunk details |
+| `create_knowledge_base` | Create a new knowledge base |
+| `delete_knowledge_base` | Delete a KB and all its data |
+| `rename_knowledge_base` | Rename a knowledge base |
 
 ---
 
@@ -336,193 +272,81 @@ local-knowledge-base/
 │   ├── desktop/                    # Tauri v2 + React app
 │   │   ├── src-tauri/              # Rust backend
 │   │   │   └── src/
-│   │   │       ├── commands/       # IPC: documents, kb, parsing, settings, python_service
-│   │   │       ├── mineru/         # MinerU API client (precise + agent)
-│   │   │       ├── storage/        # Local file management
-│   │   │       └── models/         # Shared Rust data models
+│   │   │       ├── commands/       # IPC handlers
+│   │   │       ├── mineru/         # MinerU API client
+│   │   │       ├── storage/        # File management
+│   │   │       └── models/         # Data models
 │   │   └── src/                    # React frontend
-│   │       ├── components/         # UI components
-│   │       ├── stores/             # Zustand state stores
-│   │       ├── services/           # tauriBridge + pythonClient
-│   │       ├── i18n/               # Internationalization
-│   │       └── types/              # TypeScript type definitions
-│   └── mcp-server/                 # Python MCP server (FastMCP)
-│       └── src/knowledge_mcp/
-│           ├── server.py           # MCP tool definitions
-│           └── lancedb_client.py   # LanceDB access layer
+│   └── mcp-server/                 # Python MCP server
 ├── services/
 │   └── python-backend/             # Python FastAPI service
-│       └── src/knowledge_backend/
-│           ├── api/                # REST endpoints (search, index, kb CRUD)
-│           ├── db/                 # LanceDB manager + schemas
-│           ├── embedding.py        # OpenAI-compatible embedding
-│           ├── reranker.py         # OpenAI-compatible rerank
-│           └── chunker.py          # Text chunking strategies
-└── packages/
-    └── shared-types/               # Shared TypeScript definitions
+└── scripts/                        # Build & release scripts
 ```
 
-### Running Components Individually
+### Commands
 
 ```bash
-# Frontend dev server only
-cd apps/desktop
-npm run dev
-
 # Desktop app (full Tauri)
-cd apps/desktop && npm run tauri dev
+npm run tauri dev
 
 # Python backend only
-cd services/python-backend
-uv run knowledge-backend
+cd services/python-backend && uv run knowledge-backend
 
 # MCP server only
-cd apps/mcp-server
-uv run local-kb-mcp
-```
+cd apps/mcp-server && uv run local-kb-mcp
 
-### Running Tests
-
-```bash
-# Rust tests
-cd apps/desktop/src-tauri
-cargo test
-
-# Python tests
-cd services/python-backend
-uv run pytest
-
-# MCP server tests
-cd apps/mcp-server
-uv run pytest
+# TypeScript check
+npx tsc --noEmit --project apps/desktop/tsconfig.json
 ```
 
 ### Building for Release
 
-The entire project — desktop app, Python backend, and MCP server — is packaged into a **single installer**. Users install it like any normal app; no Python, uv, or npm required.
-
-**One-command release** (Windows PowerShell):
-
 ```powershell
-.\scripts\release.ps1 0.1.0
+.\scripts\release.ps1 1.0.0
 ```
 
-This script automates the full pipeline:
-
-| Step | What happens |
-|------|-------------|
-| 1. Version bump | Syncs version across all package files |
-| 2. Install deps | `npm install` + `uv sync` for all sub-projects |
-| 3. PyInstaller | Builds `knowledge-backend.exe` (Python backend → standalone binary) |
-| 4. PyInstaller | Builds `local-kb-mcp.exe` (MCP server → standalone binary) |
-| 5. Tauri bundle | Copies both .exe files as sidecars, then builds the desktop installer |
-
-**Output**: A single `.msi` (Windows) / `.dmg` (macOS) / `.AppImage` (Linux) in:
-
-```
-apps/desktop/src-tauri/target/release/bundle/
-```
-
-**What the installer contains**:
-
-```
-Installed App/
-├── local-knowledge-base.exe      # Desktop app (Tauri + React)
-├── knowledge-backend.exe         # Python backend (standalone, no Python needed)
-├── local-kb-mcp.exe              # MCP server (standalone, no Python needed)
-└── ... (icons, resources)
-```
-
-**For the end user**:
-1. Download the `.msi` / `.dmg` from GitHub Releases
-2. Install and launch
-3. Configure API keys in Settings
-4. Start uploading documents
-
-**Claude Code MCP integration** — just point to the installed exe with the data directory:
-
-```json
-{
-  "mcpServers": {
-    "local-knowledge-base": {
-      "command": "C:\\Program Files\\Local Knowledge Base\\local-kb-mcp.exe",
-      "env": {
-        "KNOWLEDGE_BASE_DATA_DIR": "C:\\Users\\...\\.local-knowledge-base"
-      }
-    }
-  }
-}
-```
+This builds standalone executables (PyInstaller) for both the Python backend and MCP server, then packages everything into a single Tauri installer.
 
 ---
 
 ## Data Storage
 
-All data is stored locally under `~/.local-knowledge-base/` by default.
+All data is stored locally under `~/.local-knowledge-base/` by default (configurable in Settings).
 
-| Platform | Default Path |
-|----------|------|
-| Windows | `%USERPROFILE%\.local-knowledge-base\` |
-| macOS | `~/.local-knowledge-base/` |
-| Linux | `~/.local-knowledge-base/` |
-
-Directory structure:
 ```
 ~/.local-knowledge-base/
 ├── settings.json              # App configuration
 ├── knowledge_bases.json       # KB metadata registry
-├── kb_{uuid-1}/               # Knowledge base 1
-│   ├── docs/                  # Original + parsed documents
-│   │   └── {doc-id}/
-│   │       ├── original.pdf   # Original file
-│   │       ├── full.md        # MinerU parsed markdown
-│   │       └── metadata.json  # Document metadata
-│   └── index_state.json
-├── kb_{uuid-2}/               # Knowledge base 2
-└── lancedb_data/              # Vector indexes (shared with MCP server)
-    └── *.lance                # LanceDB table files
+├── kb_{uuid}/                 # Knowledge base
+│   └── docs/{doc-id}/         # Documents (original + parsed)
+└── lancedb_data/              # Vector indexes
 ```
 
 ---
 
 ## FAQ
 
-### How does Q&A work without a built-in LLM?
-
-The desktop app focuses on **document indexing and search**. For Q&A, connect Claude Code via the MCP server — Claude reads search results and generates answers with its own reasoning. This is more flexible than a fixed RAG pipeline.
-
 ### Can I use local models (Ollama)?
 
-Yes! Point the embedding API to your local Ollama server:
+Yes. Set embedding API to `http://localhost:11434/api` with model `nomic-embed-text`.
 
-- Embedding: `http://localhost:11434/api` with model like `nomic-embed-text`
+### What if I change embedding models?
+
+Use the **Re-index All** button — it creates a backup of the LanceDB table before re-indexing with the new model.
 
 ### Do I need a MinerU token?
 
-No. The app works without a token using MinerU's free Agent-mode API (≤10MB files, ≤20 pages, IP rate-limited). For larger files or higher quality parsing (tables/formulas), get a free token from [MinerU](https://mineru.net/apiManage/docs).
+No. Agent mode works without a token (≤10MB, ≤20 pages). For larger files, get a free token.
 
 ### Can the MCP server run without the desktop app?
 
-Yes! The MCP server accesses LanceDB directly — it does not require the desktop app or Python backend to be running. Just configure `KNOWLEDGE_BASE_DATA_DIR` to point to `~/.local-knowledge-base`.
-
-### What embedding dimension should I use?
-
-The app auto-detects the dimension from the first embedding call. Common models:
-- OpenAI `text-embedding-3-small`: 1536
-- OpenAI `text-embedding-3-large`: 3072
-- Ollama `nomic-embed-text`: 768
-
-### How do I backup my knowledge bases?
-
-Copy the `lancedb_data/` directory from the app data folder. To restore, place it back in the same location. The `docs/` directories contain original and parsed files.
+Yes. The MCP server accesses LanceDB directly. Just set `KNOWLEDGE_BASE_DATA_DIR`.
 
 ---
 
 ## License
 
 MIT © 2026 Local Knowledge Base Contributors
-
----
 
 ## Acknowledgments
 

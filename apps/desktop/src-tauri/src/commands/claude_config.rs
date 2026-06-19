@@ -38,7 +38,6 @@ fn find_claude_config() -> Result<PathBuf, AppError> {
 pub async fn get_mcp_config_json(
     state: State<'_, AppState>,
 ) -> CommandResult<String> {
-    let settings = state.settings.lock().unwrap().clone();
     let data_dir = state.file_store.root_dir().to_string_lossy().to_string();
 
     let (command, args): (String, Vec<String>) = {

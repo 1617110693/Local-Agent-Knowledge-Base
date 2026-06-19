@@ -1,6 +1,6 @@
-# Local Agent Knowledge Base
+# Local Agent Knowledge Base · 本地知识库
 
-一款本地优先的桌面知识库应用，专为 AI Agent 集成设计。基于 **Tauri v2 + React + Python**，支持 **OpenAI 兼容格式的 Embedding 与 Rerank 模型**、**MinerU 文档解析**，并内置 **MCP Server** 供 Claude Code 等 AI Agent 调用。
+一款面向 AI Agent 的本地优先桌面知识库应用。基于 **Tauri v2 + React + Python** 构建，支持 **OpenAI 兼容的 embedding 和 rerank 模型**、**MinerU 文档解析**，并附带 **MCP 服务器**，可直接接入 Claude Code 等 AI 助手。
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Tauri](https://img.shields.io/badge/Tauri-v2-orange)](https://tauri.app/)
@@ -11,89 +11,97 @@
 ## 功能特性
 
 ### 📄 文档管理
-- **多格式支持**：PDF、DOCX、PPTX、XLSX、图片（PNG/JPG/WebP）、HTML、**Markdown (.md)**、纯文本 (.txt)
-- **拖拽上传**，自动校验文件类型
-- **自动解析 + 自动索引**：上传 → 解析 → 索引全自动完成
-- **Markdown 和纯文本**文件无需 MinerU，直接索引
-- **MinerU 集成**，高质量文档解析：
-  - 🎯 **精准模式**（v4 extract/task）：需要 Token，≤200MB，≤200 页，支持表格/公式识别
-  - ⚡ **Agent 模式**（v1 agent/parse）：无需认证，≤10MB，≤20 页，专为 AI Agent 工作流设计
-- **Markdown 预览**已解析文档
-- **解析与索引状态追踪**，实时进度反馈
+- **多格式支持**：PDF、DOCX、PPTX、XLSX、图片 (PNG/JPG/WebP)、HTML、Markdown (.md)、纯文本 (.txt)
+- **拖拽上传**，支持多文件选择
+- **自动解析 + 自动索引**：上传 → 解析 → 索引全自动
+- **Markdown / 纯文本** 文件无需 MinerU，即时索引
+- **超大 PDF 自动分割**：超过 200 页或 200MB 的 PDF 自动切分为多个部分后解析
+- **MinerU 集成**，高质量文档解析（需 token）：
+  - 🎯 精准模式：Token 认证，≤200MB，≤200 页，支持表格/公式
+  - HTML 文件自动使用 `MinerU-HTML` 解析器
+- **Markdown 预览**，支持 LaTeX 数学公式渲染（KaTeX）
+- **实时状态指示**：等待中 → 解析中 → 已完成/失败
 
 ### 🔍 知识管理
-- **多个知识库**，独立索引互不干扰
-- **智能分块策略**：
-  - **递归分块**（推荐）— 段落 → 句子 → 定长，逐级切分
-  - **语义分块** — 按句子边界分割
-  - **定长分块** — 可配置块大小与重叠
-- **混合搜索**：稠密向量 + BM25 关键词（全文搜索）
-- **Rerank 重排序**优化搜索精度
+- **多知识库**，独立索引
+- **KB 操作**：创建、重命名、拷贝（含向量数据）、删除
+- **KB 级 embedding 模型绑定** — 保证索引一致性，模型不匹配时告警
+- **一键重新索引**（单文档 / 全库），自动备份原有数据
+- **智能分块**策略：递归分块（推荐）、语义分块、定长分块
+- **混合搜索**：稠密向量 + BM25 关键词 (FTS)
+- **重排序**，显示当前 rerank 模型名
 
 ### 🤖 AI 模型集成（OpenAI 兼容）
-- **Embedding**：OpenAI、Azure、Ollama、vLLM、LiteLLM、LM Studio 等任意 `/v1/embeddings` 端点
-- **Rerank**：Jina AI、Cohere、DashScope（Qwen3-rerank）等任意兼容端点
-- **100% 厂商无关** — 你完全掌控所使用的模型
+- **Embedding**：OpenAI、智谱/BigModel、Ollama、vLLM、LiteLLM 等任何 `/v1/embeddings` 接口
+- **Rerank**：Jina AI、Cohere、DashScope (Qwen3-rerank) 等
+- **测试连接** 按钮，即时验证配置
+- **100% 厂商无关** — 模型由你掌控
 
-### 🔌 MCP Server（模型上下文协议）
-- **3 个工具**供 AI Agent 调用：
+### 🔌 MCP 服务器
+- **6 个工具**供 AI Agent 调用：
   - `search_knowledge_base` — 混合搜索 + 重排序
-  - `list_knowledge_bases` — 列出所有知识库及统计信息
-  - `get_document` — 获取完整文档内容
+  - `list_knowledge_bases` — 列出所有 KB 及统计，检测孤立数据
+  - `get_document` — 全文检索，可选分块详情
+  - `create_knowledge_base` — 创建新 KB
+  - `delete_knowledge_base` — 删除 KB 及数据
+  - `rename_knowledge_base` — 重命名 KB
 - **stdio 传输** — 作为子进程运行
-- **`uv run`** — 零配置启动
-- **无需桌面应用** — 直接读取 LanceDB，可独立运行
-- 专为 **Claude Code** 设计，同时兼容任意 MCP 客户端
-- LLM 问答由 Agent 自身（如 Claude Code）利用搜索结果完成
+- **从 `settings.json` 读取 API 密钥** — 无需重复配置
+- **不依赖桌面应用** — 直接读取 LanceDB
+- 专为 **Claude Code** 设计，兼容任何 MCP 客户端
 
 ### 🎨 桌面界面
-- **自定义无边框窗口**，标题栏与内容融为一体
-- **深色/浅色模式**和**中/英文切换**
-- **侧边栏导航**，知识库一目了然
-- **仪表盘**展示知识库统计
-- **文档管理**：上传、解析、索引、预览
-- **搜索界面**：混合/向量/关键词模式一键切换
-- **设置面板**：统一管理所有 API Key 和模型配置
+- **无边框窗口**，集成标题栏
+- **暗色/亮色/系统** 主题切换 (☀️/🌙/🖥️)
+- **中/英文** 界面
+- **侧边栏**：KB 列表（可滚动）+ 设置固定底部
+- **KB 工作区**：统计信息、文档管理、搜索入口
+- **文档预览**：支持 LaTeX 公式
+- **搜索界面**：混合/向量/关键词模式切换，显示 rerank 模型
+- **设置面板**：连接测试、MCP 配置生成器
 
 ---
 
-## 架构
+## 技术架构
 
-```mermaid
-graph TB
-    subgraph App["🏠 Local Knowledge Base"]
-        React["⚛️ React 前端<br/>TypeScript + Vite"]
-        Rust["🦀 Rust 后端<br/>Tauri v2"]
-        Python["🐍 Python 后端<br/>FastAPI"]
-        MCP["🔌 MCP Server<br/>FastMCP / stdio"]
-        DB[("💾 LanceDB<br/>嵌入式数据库")]
-        MinerU["📄 MinerU API"]
-        Embed["🧠 Embedding API"]
-        Rerank["📊 Rerank API"]
-    end
-
-    React <-->|"Tauri IPC"| Rust
-    React -->|"HTTP REST"| Python
-    Rust -->|"管理子进程"| Python
-    Rust -->|"文档解析"| MinerU
-    Python -->|"分块 + 向量化 + 搜索"| DB
-    Python -->|"向量化"| Embed
-    Python -->|"重排序"| Rerank
-    MCP -->|"直接读取"| DB
-    MCP -->|"向量化"| Embed
-    MCP -->|"重排序"| Rerank
+```
+┌─────────────────────────────────────────────────────┐
+│                   Desktop App (Tauri)               │
+│  ┌──────────┐   ┌──────────┐   ┌────────────────┐   │
+│  │  React   │◄──│  Rust    │──►│  MinerU API    │   │
+│  │  Frontend│   │  Backend │   │  (doc parsing) │   │
+│  └────┬─────┘   └────┬─────┘   └────────────────┘   │
+│       │              │                              │
+│       │        spawns|                              │
+│       ▼              ▼                              │
+│  ┌─────────────────────────┐   ┌────────────────┐   │
+│  │   Python Backend        │   │   MCP Server   │   │
+│  │   (FastAPI)             │   │   (FastMCP)    │   │
+│  │   • Chunk + Embed       │   │   • Search     │   │
+│  │   • Vector Search       │   │   • KB Mgmt    │   │
+│  │   • Index Mgmt          │   │   • Documents  │   │
+│  └───────────┬─────────────┘   └───────┬────────┘   │
+│              │                         │            │
+│              └─────────┬───────────────┘            │
+│                        ▼                            │
+│              ┌─────────────────┐                    │
+│              │    LanceDB      │                    │
+│              │  (Embedded DB)  │                    │
+│              └─────────────────┘                    │
+└─────────────────────────────────────────────────────┘
 ```
 
 ### 技术栈
 
 | 层级 | 技术 |
-|-------|-----------|
+|------|------|
 | 桌面框架 | [Tauri v2](https://tauri.app/) (Rust) |
 | 前端 | React 18 + TypeScript + Vite + Tailwind CSS |
-| 状态管理 | Zustand + TanStack React Query |
-| 后端服务 | FastAPI + uvicorn (Python) |
+| 状态管理 | Zustand |
+| 后端 | FastAPI + uvicorn (Python) |
 | 向量数据库 | [LanceDB](https://lancedb.com/) (嵌入式) |
-| MCP 服务 | [FastMCP](https://github.com/jlowin/fastmcp) (Python) |
+| MCP 服务器 | [FastMCP](https://github.com/jlowin/fastmcp) (Python) |
+| PDF 工具 | [pypdf](https://pypi.org/project/pypdf/) |
 | 工具链 | npm, uv, cargo |
 
 ---
@@ -108,62 +116,55 @@ graph TB
 - **Python** ≥ 3.11
 - **uv**（Python 包管理器）— [安装指南](https://docs.astral.sh/uv/getting-started/installation/)
 
-### 安装步骤
+### 安装
 
 ```bash
 # 克隆仓库
-git clone https://github.com/your-username/local-knowledge-base.git
+git clone https://github.com/1617110693/Local-Agent-Knowledge-Base.git
 cd local-knowledge-base
 
-# 安装前端依赖（从工作区根目录）
+# 安装前端依赖
 npm install
 
-# 安装 Python 后端依赖
+# 安装 Python 依赖
 cd services/python-backend && uv sync && cd ../..
-
-# 安装 MCP Server 依赖
 cd apps/mcp-server && uv sync && cd ../..
 
 # 启动桌面应用
-cd apps/desktop
 npm run tauri dev
 ```
 
 ### 首次使用
 
-1. 启动应用后，Python 后端会自动运行
-2. 前往 **Settings** 配置 API Key：
-   - **Embedding API**：OpenAI、Ollama 或任意兼容服务
-   - **Rerank API**（可选）：Jina AI 或 Cohere
-   - **MinerU Token**（可选）：高质量大文件解析
-3. 创建一个**知识库**
-4. **上传文档** — 自动解析并索引，Markdown 文件即时完成
-5. **搜索**你的知识库，或通过 MCP Server 连接 Claude Code 进行 AI 问答
+1. 应用启动后自动拉起 Python 后端（端口 17390）
+2. 进入**设置**，配置：
+   - **Embedding API**：服务商地址、密钥、模型名
+   - **Rerank API**（可选）：提升搜索质量
+   - **MinerU Token**（推荐）：用于 PDF/DOC 解析
+3. 创建**知识库**
+4. **上传文档** — 支持拖拽多选
+5. **搜索**，或通过 MCP 服务器连接 **Claude Code**
 
 ---
 
-## 配置说明
-
-### 设置项参考
-
-所有设置通过桌面应用 UI 管理，持久化保存在 `~/.local-knowledge-base/settings.json`。
+## 配置参考
 
 | 设置项 | 说明 | 默认值 |
-|---------|-------------|---------|
-| `mineru_token` | MinerU 精准解析 API Token | (空) |
+|--------|------|--------|
+| `data_dir` | 自定义数据存储路径 | `~/.local-knowledge-base` |
+| `mineru_token` | MinerU API 令牌 | (空) |
 | `embedding_api_base` | Embedding API 地址 | `https://api.openai.com/v1` |
 | `embedding_api_key` | Embedding API 密钥 | (空) |
-| `embedding_model` | Embedding 模型名称 | `text-embedding-3-small` |
+| `embedding_model` | Embedding 模型名 | `text-embedding-3-small` |
 | `rerank_api_base` | Rerank API 地址 | `https://api.jina.ai/v1` |
 | `rerank_api_key` | Rerank API 密钥 | (空) |
-| `rerank_model` | Rerank 模型名称 | `jina-reranker-v2-base-multilingual` |
+| `rerank_model` | Rerank 模型名 | `jina-reranker-v2-base-multilingual` |
 | `chunk_strategy` | 分块策略 | `recursive` |
 | `chunk_size` | 每块字符数 | `512` |
-| `chunk_overlap` | 块之间重叠字符数 | `50` |
+| `chunk_overlap` | 块间重叠 | `50` |
+| `theme` | 界面主题 | `system` |
 
-### OpenAI 兼容服务配置
-
-以下为常见服务的配置示例：
+### 常见服务商配置
 
 **OpenAI**
 ```
@@ -175,336 +176,161 @@ Embedding: https://api.openai.com/v1  |  text-embedding-3-small
 Embedding: http://localhost:11434/api  |  nomic-embed-text
 ```
 
-**vLLM / LiteLLM（自建）**
-```
-Embedding: http://localhost:8000   |  your-model
-```
-
-**Jina AI（Rerank）**
-```
-Rerank:    https://api.jina.ai/v1     |  jina-reranker-v2-base-multilingual
-```
-
-**Cohere（Rerank）**
-```
-Rerank:    https://api.cohere.com/v1  |  rerank-english-v3.0
-```
-
-**DashScope（Rerank）**
-```
-Rerank:    https://dashscope.aliyuncs.com/compatible-mode/v1  |  qwen3-rerank
-```
-
-**智谱AI / BigModel**
+**智谱 / BigModel**
 ```
 Embedding: https://open.bigmodel.cn/api/paas/v4  |  embedding-3
 ```
 
+**Jina AI（rerank）**
+```
+Rerank: https://api.jina.ai/v1  |  jina-reranker-v2-base-multilingual
+```
+
+**Cohere（rerank）**
+```
+Rerank: https://api.cohere.com/v1  |  rerank-english-v3.0
+```
+
+**DashScope（rerank）**
+```
+Rerank: https://dashscope.aliyuncs.com/compatible-mode/v1  |  qwen3-rerank
+```
+
 ### MinerU API 配置
 
-1. 前往 [MinerU API 管理页面](https://mineru.net/apiManage/docs)
-2. 在 API 管理页面创建 Token
-3. 将 Token 粘贴到应用 Settings 中的 "MinerU Token"
+1. 前往 [MinerU API 管理](https://mineru.net/apiManage/docs)
+2. 创建 token
+3. 在设置 → MinerU Token 中粘贴
 
-**无 Token 时**：应用自动使用 MinerU 的 Agent 模式（无需认证，有 IP 频限，≤10MB）。对大多数个人使用场景已足够。
-
-**有 Token 时**：完整精准解析，支持表格/公式识别，文件上限 200MB、200 页。
+**无 token**：降级为 Agent 模式（免费，限频，≤10MB，≤20 页）。
+**有 token**：完整精准解析 — 表格、公式、≤200MB、≤200 页。超大 PDF 自动分割。
 
 ---
 
-## MCP Server 使用指南
+## MCP 服务器使用
 
-MCP Server 让 AI Agent（特别是 **Claude Code**）能够搜索和查询你的知识库。Claude Code 负责 LLM 推理——MCP Server 提供知识检索。
+MCP 服务器让 AI Agent（尤其是 **Claude Code**）能够搜索和查询你的知识库。
 
-### Claude Code 配置
+### 配置
 
-MCP Server 会自动从数据目录的 `settings.json` 读取 API 配置，只需指定数据目录即可。
+打开桌面应用 → 设置 → 点击**"一键配置 Claude Code MCP"**自动生成配置。
 
-**开发环境**（`uv run` 从源码启动）：
+或使用**"复制 MCP 配置"**将 JSON 复制到剪贴板。配置会自动检测开发模式还是打包版本。
 
+**开发模式**（自动检测）：
 ```json
 {
   "mcpServers": {
     "local-knowledge-base": {
       "command": "uv",
-      "args": [
-        "run",
-        "--directory",
-        "/path/to/local-knowledge-base/apps/mcp-server",
-        "local-kb-mcp"
-      ],
-      "env": {
-        "KNOWLEDGE_BASE_DATA_DIR": "$HOME/.local-knowledge-base"
-      }
+      "args": ["run", "--directory", "/path/to/apps/mcp-server", "local-kb-mcp"],
+      "env": { "KNOWLEDGE_BASE_DATA_DIR": "~/.local-knowledge-base" }
     }
   }
 }
 ```
 
-**生产环境**（打包后的 sidecar）：
-
+**生产模式**（自动检测）：
 ```json
 {
   "mcpServers": {
     "local-knowledge-base": {
       "command": "C:\\Program Files\\Local Knowledge Base\\local-kb-mcp.exe",
-      "env": {
-        "KNOWLEDGE_BASE_DATA_DIR": "C:\\Users\\...\\.local-knowledge-base"
-      }
+      "env": { "KNOWLEDGE_BASE_DATA_DIR": "C:\\Users\\...\\.local-knowledge-base" }
     }
   }
 }
 ```
 
-> 💡 API 密钥在桌面应用设置界面中配置，存储在 `settings.json`。无需在 MCP 配置中重复填写。
+> 💡 API 密钥从 `settings.json` 读取，无需在 MCP 配置中重复填写。
 
-### MCP 工具说明
+### 可用 MCP 工具
 
-#### `search_knowledge_base`
-
-搜索知识库，支持混合搜索和重排序。
-
-```json
-{
-  "query": "系统的架构是什么？",
-  "kb_id": "你的知识库UUID",
-  "top_k": 10,
-  "search_type": "hybrid",
-  "rerank": true
-}
-```
-
-返回带相关性分数和来源文档的文本块列表。
-
-#### `list_knowledge_bases`
-
-列出所有可用的知识库——无需参数，返回 ID、文档数、分块数等统计。
-
-#### `get_document`
-
-获取文档的完整文本内容：
-
-```json
-{
-  "kb_id": "你的知识库UUID",
-  "doc_id": "文档UUID",
-  "include_chunks": false
-}
-```
-
-将从分块中重建完整文档内容。
-
-### Claude Code 如何使用这些工具
-
-当你向 Claude Code 提问关于文档的问题时，它可以：
-1. 调用 `search_knowledge_base` 找到相关文本块
-2. 用自己的推理能力综合搜索结果生成回答
-3. 必要时调用 `get_document` 阅读完整原文
-
-这比内置的 RAG 对话更强大，因为 Claude Code 可以进行多步推理、跨知识库交叉引用，并将文档知识与通用能力结合。
-
-### 手动运行 MCP Server
-
-```bash
-# 开发环境
-cd apps/mcp-server
-uv run local-kb-mcp
-
-# 从已安装的包运行
-local-kb-mcp
-```
+| 工具 | 说明 |
+|------|------|
+| `search_knowledge_base` | 混合搜索（向量 + BM25），可选重排序 |
+| `list_knowledge_bases` | 列出所有 KB，检测孤立数据 |
+| `get_document` | 获取文档全文，可选分块详情 |
+| `create_knowledge_base` | 创建新知识库 |
+| `delete_knowledge_base` | 删除知识库及全部数据 |
+| `rename_knowledge_base` | 重命名知识库 |
 
 ---
 
-## 开发指南
+## 开发
 
 ### 项目结构
 
 ```
 local-knowledge-base/
 ├── apps/
-│   ├── desktop/                    # Tauri v2 + React 桌面应用
+│   ├── desktop/                    # Tauri v2 + React 应用
 │   │   ├── src-tauri/              # Rust 后端
-│   │   │   └── src/
-│   │   │       ├── commands/       # IPC: 文档、知识库、解析、设置、Python 服务
-│   │   │       ├── mineru/         # MinerU API 客户端（精准 + Agent 模式）
-│   │   │       ├── storage/        # 本地文件管理
-│   │   │       └── models/         # Rust 数据模型
 │   │   └── src/                    # React 前端
-│   │       ├── components/         # 界面组件
-│   │       ├── stores/             # Zustand 状态
-│   │       ├── services/           # tauriBridge + pythonClient
-│   │       ├── i18n/               # 国际化
-│   │       └── types/              # TypeScript 类型
-│   └── mcp-server/                 # Python MCP Server (FastMCP)
-│       └── src/knowledge_mcp/
-│           ├── server.py           # MCP 工具定义
-│           └── lancedb_client.py   # LanceDB 访问层
+│   └── mcp-server/                 # Python MCP 服务器
 ├── services/
 │   └── python-backend/             # Python FastAPI 服务
-│       └── src/knowledge_backend/
-│           ├── api/                # REST 端点（搜索、索引、知识库 CRUD）
-│           ├── db/                 # LanceDB 管理 + Schema
-│           ├── embedding.py        # OpenAI 兼容 Embedding
-│           ├── reranker.py         # OpenAI 兼容 Rerank
-│           └── chunker.py          # 文本分块策略
-└── packages/
-    └── shared-types/               # 共享 TypeScript 类型
+└── scripts/                        # 构建与发布脚本
 ```
 
-### 独立运行各组件
+### 常用命令
 
 ```bash
-# 仅前端开发服务器
-cd apps/desktop
-npm run dev
-
-# 完整桌面应用
-cd apps/desktop && npm run tauri dev
+# 桌面应用（完整 Tauri）
+npm run tauri dev
 
 # 仅 Python 后端
-cd services/python-backend
-uv run knowledge-backend
+cd services/python-backend && uv run knowledge-backend
 
-# 仅 MCP Server
-cd apps/mcp-server
-uv run local-kb-mcp
-```
+# 仅 MCP 服务器
+cd apps/mcp-server && uv run local-kb-mcp
 
-### 运行测试
-
-```bash
-# Rust 测试
-cd apps/desktop/src-tauri
-cargo test
-
-# Python 测试
-cd services/python-backend
-uv run pytest
-
-# MCP Server 测试
-cd apps/mcp-server
-uv run pytest
+# TypeScript 类型检查
+npx tsc --noEmit --project apps/desktop/tsconfig.json
 ```
 
 ### 发布构建
 
-整个项目——桌面应用、Python 后端、MCP Server——打包进**一个安装包**。用户像安装普通软件一样使用，无需 Python、uv 或 npm。
-
-**一键发布**（Windows PowerShell）：
-
 ```powershell
-.\scripts\release.ps1 0.1.0
+.\scripts\release.ps1 1.0.0
 ```
 
-脚本自动完成全流程：
-
-| 步骤 | 内容 |
-|------|------|
-| 1. 版本同步 | 更新所有包的版本号 |
-| 2. 安装依赖 | `npm install` + `uv sync` |
-| 3. PyInstaller | 将 Python 后端打包为独立 `knowledge-backend.exe` |
-| 4. PyInstaller | 将 MCP Server 打包为独立 `local-kb-mcp.exe` |
-| 5. Tauri 打包 | 将两个 exe 作为 sidecar 打入桌面安装程序 |
-
-**产物**：单个 `.msi`（Windows）/ `.dmg`（macOS）/ `.AppImage`（Linux），位于：
-
-```
-apps/desktop/src-tauri/target/release/bundle/
-```
-
-**安装包内容**：
-
-```
-安装目录/
-├── local-knowledge-base.exe      # 桌面应用（Tauri + React）
-├── knowledge-backend.exe         # Python 后端（独立运行，无需 Python）
-├── local-kb-mcp.exe              # MCP Server（独立运行，无需 Python）
-└── ...（图标、资源文件）
-```
-
-**用户使用流程**：
-1. 从 GitHub Releases 下载 `.msi` / `.dmg`
-2. 安装并启动
-3. 在设置中配置 API Key
-4. 开始上传文档
-
-**Claude Code MCP 集成**，指向安装目录中的 exe，只需数据目录：
-
-```json
-{
-  "mcpServers": {
-    "local-knowledge-base": {
-      "command": "C:\\Program Files\\Local Knowledge Base\\local-kb-mcp.exe",
-      "env": {
-        "KNOWLEDGE_BASE_DATA_DIR": "C:\\Users\\...\\.local-knowledge-base"
-      }
-    }
-  }
-}
-```
+构建流程：PyInstaller 将 Python 后端和 MCP 服务器打包为独立 exe，然后 Tauri 将所有内容打包为单个安装包。
 
 ---
 
 ## 数据存储
 
-所有数据默认存储在 `~/.local-knowledge-base/` 下。
+所有数据默认存储在 `~/.local-knowledge-base/`（可在设置中修改）。
 
-| 平台 | 默认路径 |
-|----------|------|
-| Windows | `%USERPROFILE%\.local-knowledge-base\` |
-| macOS | `~/.local-knowledge-base/` |
-| Linux | `~/.local-knowledge-base/` |
-
-目录结构：
 ```
 ~/.local-knowledge-base/
 ├── settings.json              # 应用配置
-├── knowledge_bases.json       # 知识库注册表
-├── kb_{uuid-1}/               # 知识库 1
-│   ├── docs/                  # 原始文件与解析结果
-│   │   └── {doc-id}/
-│   │       ├── original.pdf   # 原始文件
-│   │       ├── full.md        # MinerU 解析出的 Markdown
-│   │       └── metadata.json  # 文档元数据
-│   └── index_state.json
-├── kb_{uuid-2}/               # 知识库 2
-└── lancedb_data/              # 向量索引（与 MCP Server 共享）
-    └── *.lance                # LanceDB 表文件
+├── knowledge_bases.json       # KB 元数据注册表
+├── kb_{uuid}/                 # 知识库
+│   └── docs/{doc-id}/         # 文档（原始 + 解析后）
+└── lancedb_data/              # 向量索引
 ```
 
 ---
 
 ## 常见问题
 
-### 没有内置 LLM 如何进行问答？
-
-桌面应用专注**文档索引和搜索**。问答通过 Claude Code 连接 MCP Server 完成——Claude 读取搜索结果后用自己的推理能力生成回答，比固定的 RAG 流程更灵活。
-
 ### 可以使用本地模型（Ollama）吗？
 
-可以！将 Embedding API 地址指向本地 Ollama 服务：
+可以。Embedding API 设置为 `http://localhost:11434/api`，模型名 `nomic-embed-text`。
 
-- Embedding：`http://localhost:11434/api`，模型如 `nomic-embed-text`
+### 更换 embedding 模型怎么办？
 
-### 必须有 MinerU Token 吗？
+使用**一键重新索引**按钮——会自动创建 LanceDB 表备份，然后用新模型重新索引。
 
-不需要。无 Token 时使用 MinerU 免费的 Agent 模式（≤10MB 文件、≤20 页、有 IP 频限）。需要更大文件或更高质量（表格/公式识别）时，在 [MinerU](https://mineru.net/apiManage/docs) 免费获取 Token。
+### 需要 MinerU token 吗？
 
-### MCP Server 可以脱离桌面应用运行吗？
+不必须。Agent 模式无需 token（≤10MB，≤20 页）。处理大文件建议获取免费 token。
 
-可以！MCP Server 直接读取 LanceDB 数据，不需要桌面应用或 Python 后端运行。只需配置 `KNOWLEDGE_BASE_DATA_DIR` 指向 `~/.local-knowledge-base` 即可。
+### MCP 服务器可以不启动桌面应用独立运行吗？
 
-### Embedding 维度是多少？
-
-应用会自动检测。常见模型：
-- OpenAI `text-embedding-3-small`：1536
-- OpenAI `text-embedding-3-large`：3072
-- Ollama `nomic-embed-text`：768
-
-### 如何备份知识库？
-
-复制 `~/.local-knowledge-base/lancedb_data/` 目录即可。恢复时将其放回原位。`docs/` 目录中存有原始文件和解析结果。
+可以。MCP 服务器直接读取 LanceDB，只需设置 `KNOWLEDGE_BASE_DATA_DIR` 环境变量。
 
 ---
 
@@ -512,12 +338,10 @@ apps/desktop/src-tauri/target/release/bundle/
 
 MIT © 2026 Local Knowledge Base Contributors
 
----
-
 ## 致谢
 
 - [MinerU](https://mineru.net/) — 文档解析 API
 - [Tauri](https://tauri.app/) — 桌面应用框架
 - [LanceDB](https://lancedb.com/) — 嵌入式向量数据库
-- [FastMCP](https://github.com/jlowin/fastmcp) — MCP Server 框架
+- [FastMCP](https://github.com/jlowin/fastmcp) — MCP 服务器框架
 - [FastAPI](https://fastapi.tiangolo.com/) — Python Web 框架

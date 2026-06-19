@@ -6,6 +6,8 @@ use std::io::Read;
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use std::time::Duration;
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
 
 /// Python backend process handle
 pub struct PythonProcess(pub Mutex<Option<Child>>);
@@ -48,7 +50,6 @@ impl Drop for PythonProcess {
 /// Explicitly kill the Python backend (call from app cleanup)
 pub fn force_kill_backend() {
     kill_backend_processes();
-    }
 }
 
 #[derive(Debug, Serialize)]
