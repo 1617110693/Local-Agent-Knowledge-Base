@@ -17,9 +17,12 @@ pub async fn update_settings(
     let mut settings = state.settings.lock().unwrap();
     *settings = new_settings.clone();
 
-    // Persist to disk
-    let app_data_dir = state.file_store.root_dir().clone();
-    settings.save(&app_data_dir).map_err(|e| crate::error::AppError::Internal(e.to_string()))?;
+    // Always persist to settings_dir (~/.local-knowledge-base), which is the
+    // canonical location loaded on startup — never to file_store.root_dir()
+    // which may point to a custom data_dir.
+    let settings_dir = state.settings_dir.clone();
+    std::fs::create_dir_all(&settings_dir).ok();
+    settings.save(&settings_dir).map_err(|e| crate::error::AppError::Internal(e.to_string()))?;
 
     Ok(new_settings)
 }

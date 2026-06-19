@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useKBStore } from "../../stores/useKBStore";
 import { useI18n } from "../../i18n";
-import { Plus, Trash2, FolderOpen, BookOpen, FileText, Layers } from "lucide-react";
+import { Plus, Trash2, FolderOpen, BookOpen, FileText } from "lucide-react";
+import { ConfirmDialog } from "../common/ConfirmDialog";
 
 export function KBDashboard() {
   const navigate = useNavigate();
@@ -11,6 +12,7 @@ export function KBDashboard() {
   const [showCreate, setShowCreate] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
 
   useEffect(() => { loadKBs(); }, []);
 
@@ -20,9 +22,16 @@ export function KBDashboard() {
     setName(""); setDescription(""); setShowCreate(false);
   };
 
-  const handleDelete = async (kbId: string, e: React.MouseEvent) => {
+  const handleDelete = (kbId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (confirm(t("kb.deleteConfirm"))) await deleteKB(kbId);
+    setDeleteTarget(kbId);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (deleteTarget) {
+      await deleteKB(deleteTarget);
+      setDeleteTarget(null);
+    }
   };
 
   return (
@@ -69,7 +78,6 @@ export function KBDashboard() {
                   {kb.description && <p className="text-sm text-muted-foreground">{kb.description}</p>}
                   <div className="flex gap-3 mt-1 text-xs text-muted-foreground">
                     <span className="flex items-center gap-1"><FileText className="w-3 h-3" />{kb.document_count} {t("kb.docs")}</span>
-                    <span className="flex items-center gap-1"><Layers className="w-3 h-3" />{kb.chunk_count} {t("kb.chunks")}</span>
                   </div>
                 </div>
               </div>
@@ -80,6 +88,16 @@ export function KBDashboard() {
           ))}
         </div>
       )}
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title={t("kb.deleteConfirm")}
+        message={t("kb.deleteConfirm")}
+        confirmLabel={t("docs.delete")}
+        cancelLabel={t("kb.cancel")}
+        onConfirm={handleDeleteConfirm}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   );
 }

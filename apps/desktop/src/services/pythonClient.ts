@@ -137,3 +137,27 @@ export async function checkHealth(): Promise<boolean> {
     return false;
   }
 }
+
+// ── Test Connection ──
+
+export async function testEmbedding(params: {
+  api_base: string;
+  api_key: string;
+  model: string;
+}): Promise<{ valid: boolean; dimension?: number; status: string; detail?: string }> {
+  return pythonFetch("/config/validate-embedding", {
+    method: "POST",
+    body: JSON.stringify(params),
+  });
+}
+
+export async function testRerank(params: {
+  api_base: string;
+  api_key: string;
+  model: string;
+}): Promise<{ valid: boolean; format?: string; url?: string; status: string; detail?: string }> {
+  return pythonFetch("/config/validate-rerank", {
+    method: "POST",
+    body: JSON.stringify(params),
+  });
+}

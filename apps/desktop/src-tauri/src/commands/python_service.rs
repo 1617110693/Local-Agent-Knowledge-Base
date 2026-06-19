@@ -10,6 +10,17 @@ use std::time::Duration;
 /// Python backend process handle
 pub struct PythonProcess(pub Mutex<Option<Child>>);
 
+impl Drop for PythonProcess {
+    fn drop(&mut self) {
+        if let Ok(mut guard) = self.0.lock() {
+            if let Some(ref mut child) = *guard {
+                let _ = child.kill();
+                let _ = child.wait();
+            }
+        }
+    }
+}
+
 #[derive(Debug, Serialize)]
 pub struct PythonBackendStatus {
     pub running: bool,
@@ -20,26 +31,39 @@ pub struct PythonBackendStatus {
 
 /// Find the bundled sidecar .exe, or fall back to uv run from source
 fn resolve_backend_command() -> (String, Vec<String>) {
-    // Try bundled sidecar first (production)
+    // Try bundled sidecar first (production) — skip 0-byte dev placeholders
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
-            let sidecar = dir.join("knowledge-backend.exe");
-            if sidecar.exists() {
-                return (sidecar.to_string_lossy().to_string(), vec![]);
-            }
-            // macOS / Linux naming
-            let sidecar = dir.join("knowledge-backend");
-            if sidecar.exists() {
-                return (sidecar.to_string_lossy().to_string(), vec![]);
+            for name in &["knowledge-backend.exe", "knowledge-backend"] {
+                let sidecar = dir.join(name);
+                if sidecar.exists() {
+                    if let Ok(meta) = std::fs::metadata(&sidecar) {
+                        if meta.len() > 1024 {
+                            return (sidecar.to_string_lossy().to_string(), vec![]);
+                        }
+                    }
+                }
             }
         }
     }
 
     // Dev mode: use uv run from source tree
-    let manifest = std::env::var("CARGO_MANIFEST_DIR").unwrap_or_default();
-    let backend_dir = std::path::PathBuf::from(&manifest)
-        .join("..").join("..").join("..")
-        .join("services").join("python-backend");
+    let backend_dir: std::path::PathBuf =
+        // CARGO_MANIFEST_DIR = .../apps/desktop/src-tauri (set during cargo run)
+        if let Ok(manifest) = std::env::var("CARGO_MANIFEST_DIR") {
+            std::path::PathBuf::from(&manifest)
+                .join("..").join("..").join("..")
+                .join("services").join("python-backend")
+        }
+        // Fallback: exe is in target/debug/ → go up to project root
+        else if let Ok(exe) = std::env::current_exe() {
+            exe.parent().unwrap_or(std::path::Path::new("."))
+                .parent().unwrap_or(std::path::Path::new("."))
+                .parent().unwrap_or(std::path::Path::new("."))
+                .join("services").join("python-backend")
+        } else {
+            std::path::PathBuf::from("services/python-backend")
+        };
 
     (
         "uv".to_string(),

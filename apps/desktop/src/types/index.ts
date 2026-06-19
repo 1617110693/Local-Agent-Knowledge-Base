@@ -43,6 +43,19 @@ export interface ParseTask {
   err_msg?: string;
 }
 
+export interface ChatRequest {
+  kb_id: string;
+  query: string;
+  top_k?: number;
+  rerank?: boolean;
+  stream?: boolean;
+}
+
+export interface ChatMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
 export interface SearchResult {
   chunk_id: string;
   doc_id: string;
@@ -68,6 +81,7 @@ export interface SearchRequest {
 }
 
 export interface AppSettings {
+  data_dir: string;
   mineru_token: string;
   embedding_api_base: string;
   embedding_api_key: string;
@@ -83,11 +97,12 @@ export interface AppSettings {
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
+  data_dir: "",
   mineru_token: "",
-  embedding_api_base: "https://api.openai.com",
+  embedding_api_base: "https://api.openai.com/v1",
   embedding_api_key: "",
   embedding_model: "text-embedding-3-small",
-  rerank_api_base: "https://api.jina.ai",
+  rerank_api_base: "https://api.jina.ai/v1",
   rerank_api_key: "",
   rerank_model: "jina-reranker-v2-base-multilingual",
   chunk_strategy: "recursive",

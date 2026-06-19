@@ -27,7 +27,7 @@ export function createT(lang: Lang) {
     let text = entry[lang] || entry["en"] || key;
     if (vars) {
       for (const [k, v] of Object.entries(vars)) {
-        text = text.replace(`{${k}}`, String(v));
+        text = text.replace(`{${k}}`, String(v)) as typeof text;
       }
     }
     return text;

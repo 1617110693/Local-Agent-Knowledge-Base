@@ -4,6 +4,8 @@ export const translations = {
   "app.title": { en: "Local Knowledge Base", "zh-CN": "本地知识库" },
   "app.backendReady": { en: "Backend Ready", "zh-CN": "后端就绪" },
   "app.backendOffline": { en: "Backend Offline", "zh-CN": "后端离线" },
+  "app.viewError": { en: "View error details", "zh-CN": "查看错误详情" },
+  "app.backendError": { en: "Backend Error", "zh-CN": "后端错误" },
 
   // Sidebar
   "nav.knowledgeBases": { en: "Knowledge Bases", "zh-CN": "知识库" },
@@ -50,7 +52,10 @@ export const translations = {
   "docs.desc": { en: "Upload and manage documents in this knowledge base", "zh-CN": "上传并管理此知识库中的文档" },
   "docs.upload": { en: "Upload Document", "zh-CN": "上传文档" },
   "docs.empty": { en: "No documents yet", "zh-CN": "还没有文档" },
-  "docs.emptyHint": { en: "Upload PDF, DOCX, PPTX, XLSX, images, or HTML files", "zh-CN": "上传 PDF、DOCX、PPTX、XLSX、图片或 HTML 文件" },
+  "docs.emptyHint": { en: "Drop files here or click to upload", "zh-CN": "拖拽文件到此处或点击上传" },
+  "docs.uploading": { en: "Processing...", "zh-CN": "处理中…" },
+  "docs.loadingHint": { en: "Loading documents...", "zh-CN": "正在加载文档列表…" },
+  "docs.parsingHint": { en: "Uploading and parsing...", "zh-CN": "正在上传并解析…" },
   "docs.index": { en: "Index", "zh-CN": "索引" },
   "docs.indexing": { en: "Indexing...", "zh-CN": "索引中…" },
   "docs.preview": { en: "Preview", "zh-CN": "预览" },
@@ -85,6 +90,10 @@ export const translations = {
   "settings.title": { en: "Settings", "zh-CN": "设置" },
   "settings.save": { en: "Save Settings", "zh-CN": "保存设置" },
   "settings.saved": { en: "Saved", "zh-CN": "已保存" },
+  "settings.general": { en: "General", "zh-CN": "通用" },
+  "settings.dataDir": { en: "Data Directory", "zh-CN": "数据存储路径" },
+  "settings.dataDirHint": { en: "Where documents and indexes are stored. Leave empty to use ~/.local-knowledge-base. Restart required after changing.", "zh-CN": "文档和索引的存储路径。留空则使用 ~/.local-knowledge-base。修改后需重启应用。" },
+  "settings.browse": { en: "Browse", "zh-CN": "浏览" },
   "settings.mineru": { en: "MinerU Document Parsing", "zh-CN": "MinerU 文档解析" },
   "settings.mineruToken": { en: "MinerU Token", "zh-CN": "MinerU 令牌" },
   "settings.mineruHint": { en: "Get your token from MinerU API Management", "zh-CN": "从 MinerU API 管理页面获取令牌" },
@@ -106,6 +115,16 @@ export const translations = {
   "settings.apiBase": { en: "API Base URL", "zh-CN": "API 地址" },
   "settings.apiKey": { en: "API Key", "zh-CN": "API 密钥" },
   "settings.model": { en: "Model", "zh-CN": "模型" },
+  "settings.testConnection": { en: "Test Connection", "zh-CN": "测试连接" },
+  "settings.testing": { en: "Testing...", "zh-CN": "测试中…" },
+  "settings.testSuccess": { en: "Connected — embedding dimension: {dim}", "zh-CN": "连接成功 — 向量维度: {dim}" },
+  "settings.testSuccessRerank": { en: "Connected", "zh-CN": "连接成功" },
+  "settings.testFailed": { en: "Connection failed", "zh-CN": "连接失败" },
+
+  // Claude MCP
+  "settings.claudeMCP": { en: "Claude Code Integration", "zh-CN": "Claude Code 集成" },
+  "settings.claudeMCPDesc": { en: "Auto-configure the MCP server for Claude Code. This writes the config to ~/.claude.json so Claude Code can search your knowledge bases.", "zh-CN": "一键配置 Claude Code 的 MCP Server。将配置写入 ~/.claude.json，Claude Code 即可搜索你的知识库。" },
+  "settings.configureClaude": { en: "Configure Claude Code MCP", "zh-CN": "一键配置 Claude Code MCP" },
 } as const;
 
 export type TranslationKey = keyof typeof translations;

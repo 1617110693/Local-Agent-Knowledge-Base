@@ -70,6 +70,14 @@ export async function getDocumentContent(
   return invoke("get_document_content", { kbId, docId });
 }
 
+export async function saveDocumentChunks(
+  kbId: string,
+  docId: string,
+  chunkCount: number
+): Promise<Document> {
+  return invoke("save_document_chunks", { kbId, docId, chunkCount });
+}
+
 // ── Parsing ──
 
 export async function startParsing(
@@ -112,4 +120,14 @@ export async function getPythonBackendStatus(): Promise<{
   error: string | null;
 }> {
   return invoke("get_python_backend_status");
+}
+
+// ── Claude MCP Config ──
+
+export async function configureClaudeMCP(): Promise<{
+  success: boolean;
+  path: string;
+  message: string;
+}> {
+  return invoke("configure_claude_mcp");
 }

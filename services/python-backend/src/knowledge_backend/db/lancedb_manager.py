@@ -51,6 +51,16 @@ class LanceDBManager:
             return self.db.open_table(self.table_name(kb_id))
         return None
 
+    def delete_document_chunks(self, kb_id: str, doc_id: str):
+        """Remove all chunks belonging to a document."""
+        table = self.get_table(kb_id)
+        if table is None:
+            return
+        try:
+            table.delete(f"doc_id = '{doc_id}'")
+        except Exception:
+            pass
+
     def insert_chunks(
         self,
         kb_id: str,
@@ -64,6 +74,9 @@ class LanceDBManager:
         table = self.get_table(kb_id)
         if table is None:
             raise ValueError(f"Knowledge base table not found: {kb_id}")
+
+        # Delete existing chunks for this document to prevent duplicates
+        self.delete_document_chunks(kb_id, doc_id)
 
         rows = []
         for chunk, vector in zip(chunks, vectors):
@@ -165,13 +178,17 @@ class LanceDBManager:
                 metadata = json.loads(r.get("metadata_json", "{}"))
             except (json.JSONDecodeError, TypeError):
                 pass
+            # _distance is a dissimilarity measure (lower = better match).
+            # Convert to a 0–1 similarity score where higher = better.
+            distance = float(r.get("_distance", 0))
+            score = 1.0 / (1.0 + distance)
             formatted.append(
                 {
                     "chunk_id": r.get("chunk_id", ""),
                     "doc_id": r.get("doc_id", ""),
                     "doc_name": r.get("doc_name", ""),
                     "content": r.get("content", ""),
-                    "score": r.get("_distance", 1.0 - i * 0.05),
+                    "score": score,
                     "metadata": metadata,
                 }
             )

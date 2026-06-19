@@ -1,4 +1,4 @@
-"""Document indexing endpoint."""
+"""Document indexing and deletion endpoints."""
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
@@ -19,6 +19,11 @@ class IndexRequest(BaseModel):
     doc_name: str = ""
     markdown_content: str
     chunk_config: Optional[dict] = None
+
+
+class DeleteChunksRequest(BaseModel):
+    kb_id: str
+    doc_id: str
 
 
 @router.post("/index")
@@ -65,5 +70,17 @@ def index_document(req: IndexRequest):
         )
 
         return {"doc_id": req.doc_id, "chunk_count": count, "status": "indexed"}
+    finally:
+        db.close()
+
+
+@router.post("/delete-chunks")
+def delete_document_chunks(req: DeleteChunksRequest):
+    """Delete all chunks belonging to a document from LanceDB."""
+    config = get_config()
+    db = LanceDBManager(Path(config.knowledge_base_data_dir) / "lancedb_data")
+    try:
+        db.delete_document_chunks(req.kb_id, req.doc_id)
+        return {"status": "ok", "doc_id": req.doc_id}
     finally:
         db.close()

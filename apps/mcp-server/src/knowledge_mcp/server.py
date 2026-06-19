@@ -40,11 +40,11 @@ if not DATA_DIR:
         DATA_DIR = str(default_dir)  # Use anyway; will be created by the desktop app
 
 EMBEDDING_API_BASE = os.environ.get(
-    "EMBEDDING_API_BASE", "https://api.openai.com"
+    "EMBEDDING_API_BASE", "https://api.openai.com/v1"
 )
 EMBEDDING_API_KEY = os.environ.get("EMBEDDING_API_KEY", "")
 EMBEDDING_MODEL = os.environ.get("EMBEDDING_MODEL", "text-embedding-3-small")
-RERANK_API_BASE = os.environ.get("RERANK_API_BASE", "https://api.jina.ai")
+RERANK_API_BASE = os.environ.get("RERANK_API_BASE", "https://api.jina.ai/v1")
 RERANK_API_KEY = os.environ.get("RERANK_API_KEY", "")
 RERANK_MODEL = os.environ.get(
     "RERANK_MODEL", "jina-reranker-v2-base-multilingual"

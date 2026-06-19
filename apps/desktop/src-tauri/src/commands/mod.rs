@@ -1,3 +1,4 @@
+pub mod claude_config;
 pub mod documents;
 pub mod knowledge_base;
 pub mod parsing;

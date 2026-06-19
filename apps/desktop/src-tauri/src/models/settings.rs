@@ -4,6 +4,7 @@ use std::path::Path;
 /// Application settings persisted to disk
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppSettings {
+    pub data_dir: String,
     pub mineru_token: String,
     pub embedding_api_base: String,
     pub embedding_api_key: String,
@@ -21,11 +22,12 @@ pub struct AppSettings {
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
+            data_dir: String::new(),
             mineru_token: String::new(),
-            embedding_api_base: "https://api.openai.com".to_string(),
+            embedding_api_base: "https://api.openai.com/v1".to_string(),
             embedding_api_key: String::new(),
             embedding_model: "text-embedding-3-small".to_string(),
-            rerank_api_base: "https://api.jina.ai".to_string(),
+            rerank_api_base: "https://api.jina.ai/v1".to_string(),
             rerank_api_key: String::new(),
             rerank_model: "jina-reranker-v2-base-multilingual".to_string(),
             chunk_strategy: "recursive".to_string(),

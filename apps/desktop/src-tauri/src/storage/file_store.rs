@@ -70,10 +70,19 @@ impl FileStore {
         registry.knowledge_bases.retain(|kb| kb.id != kb_id);
         self.save_registry(&registry)?;
 
-        // Delete KB directory
+        // Delete KB document directory
         let kb_dir = self.root_dir.join(format!("kb_{}", kb_id));
         if kb_dir.exists() {
             std::fs::remove_dir_all(&kb_dir)?;
+        }
+
+        // Delete LanceDB vector table
+        let lance_table = self
+            .root_dir
+            .join("lancedb_data")
+            .join(format!("kb_{}.lance", kb_id.replace('-', "_")));
+        if lance_table.exists() {
+            std::fs::remove_dir_all(&lance_table)?;
         }
 
         Ok(())
@@ -219,6 +228,19 @@ impl FileStore {
         let mut doc = self.get_document(kb_id, doc_id)?;
         doc.parse_status = status;
         doc.parse_error = error;
+        doc.updated_at = Utc::now();
+        self.save_document_meta(&doc)?;
+        Ok(doc)
+    }
+
+    pub fn update_document_chunks(
+        &self,
+        kb_id: &str,
+        doc_id: &str,
+        chunk_count: u32,
+    ) -> CommandResult<Document> {
+        let mut doc = self.get_document(kb_id, doc_id)?;
+        doc.chunk_count = chunk_count;
         doc.updated_at = Utc::now();
         self.save_document_meta(&doc)?;
         Ok(doc)

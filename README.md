@@ -11,7 +11,7 @@ A local-first desktop knowledge base application designed for AI agent integrati
 ## Features
 
 ### 📄 Document Management
-- **Multi-format support**: PDF, DOCX, PPTX, XLSX, images (PNG/JPG/WebP), HTML
+- **Multi-format support**: PDF, DOCX, PPTX, XLSX, images (PNG/JPG/WebP), HTML, **Markdown (.md)**, plain text (.txt)
 - **Drag & drop upload** with file type validation
 - **MinerU integration** for high-quality document parsing:
   - 🎯 **Precise mode** (v4 extract/task): Token auth, ≤200MB, ≤200 pages, tables/formulas
@@ -150,10 +150,10 @@ All settings are managed through the desktop app UI. They are persisted to `sett
 | Setting | Description | Default |
 |---------|-------------|---------|
 | `mineru_token` | MinerU API token for precise parsing | (empty) |
-| `embedding_api_base` | Embedding API base URL | `https://api.openai.com` |
+| `embedding_api_base` | Embedding API base URL | `https://api.openai.com/v1` |
 | `embedding_api_key` | Embedding API key | (empty) |
 | `embedding_model` | Embedding model name | `text-embedding-3-small` |
-| `rerank_api_base` | Rerank API base URL | `https://api.jina.ai` |
+| `rerank_api_base` | Rerank API base URL | `https://api.jina.ai/v1` |
 | `rerank_api_key` | Rerank API key | (empty) |
 | `rerank_model` | Rerank model name | `jina-reranker-v2-base-multilingual` |
 | `chunk_strategy` | Chunking method | `recursive` |
@@ -162,16 +162,18 @@ All settings are managed through the desktop app UI. They are persisted to `sett
 
 ### OpenAI-compatible Providers
 
-The app works with any OpenAI-compatible API. Here are common configurations:
+The app works with any OpenAI-compatible API. The **API Base URL** field should include the version path — the app appends only the endpoint name (e.g. `/embeddings`, `/rerank`).
+
+Common configurations:
 
 **OpenAI**
 ```
-Embedding: https://api.openai.com  |  text-embedding-3-small
+Embedding: https://api.openai.com/v1  |  text-embedding-3-small
 ```
 
 **Ollama (local)**
 ```
-Embedding: http://localhost:11434  |  nomic-embed-text
+Embedding: http://localhost:11434/api  |  nomic-embed-text
 ```
 
 **vLLM / LiteLLM (self-hosted)**
@@ -181,13 +183,20 @@ Embedding: http://localhost:8000   |  your-model
 
 **Jina AI (rerank)**
 ```
-Rerank:    https://api.jina.ai     |  jina-reranker-v2-base-multilingual
+Rerank:    https://api.jina.ai/v1     |  jina-reranker-v2-base-multilingual
 ```
 
 **Cohere (rerank)**
 ```
-Rerank:    https://api.cohere.com  |  rerank-english-v3.0
+Rerank:    https://api.cohere.com/v1  |  rerank-english-v3.0
 ```
+
+**ZhipuAI / BigModel**
+```
+Embedding: https://open.bigmodel.cn/api/paas/v4  |  embedding-2
+```
+
+> 💡 The base URL should include the API version prefix (e.g. `/v1`, `/v4`, `/api`). The app appends `/embeddings` or `/rerank` to it. For Ollama, use `http://localhost:11434/api`.
 
 ### MinerU API Setup
 
@@ -222,10 +231,10 @@ Add to your `claude_desktop_config.json` or `.claude/settings.json`:
       ],
       "env": {
         "KNOWLEDGE_BASE_DATA_DIR": "$HOME/.local-knowledge-base",
-        "EMBEDDING_API_BASE": "https://api.openai.com",
+        "EMBEDDING_API_BASE": "https://api.openai.com/v1",
         "EMBEDDING_API_KEY": "sk-your-key-here",
         "EMBEDDING_MODEL": "text-embedding-3-small",
-        "RERANK_API_BASE": "https://api.jina.ai",
+        "RERANK_API_BASE": "https://api.jina.ai/v1",
         "RERANK_API_KEY": "jina-your-key-here",
         "RERANK_MODEL": "jina-reranker-v2-base-multilingual"
       }
@@ -252,7 +261,7 @@ Once the project is published to GitHub:
       ],
       "env": {
         "KNOWLEDGE_BASE_DATA_DIR": "$HOME/.local-knowledge-base",
-        "EMBEDDING_API_BASE": "https://api.openai.com",
+        "EMBEDDING_API_BASE": "https://api.openai.com/v1",
         "EMBEDDING_API_KEY": "sk-...",
         "EMBEDDING_MODEL": "text-embedding-3-small"
       }
@@ -450,7 +459,7 @@ Installed App/
       "command": "C:\\Program Files\\Local Knowledge Base\\local-kb-mcp.exe",
       "env": {
         "KNOWLEDGE_BASE_DATA_DIR": "C:\\Users\\...\\.local-knowledge-base",
-        "EMBEDDING_API_BASE": "https://api.openai.com",
+        "EMBEDDING_API_BASE": "https://api.openai.com/v1",
         "EMBEDDING_API_KEY": "sk-...",
         "EMBEDDING_MODEL": "text-embedding-3-small"
       }
@@ -500,7 +509,7 @@ The desktop app focuses on **document indexing and search**. For Q&A, connect Cl
 
 Yes! Point the embedding API to your local Ollama server:
 
-- Embedding: `http://localhost:11434` with model like `nomic-embed-text`
+- Embedding: `http://localhost:11434/api` with model like `nomic-embed-text`
 
 ### Do I need a MinerU token?
 

@@ -53,7 +53,7 @@ class LanceDBSearcher:
         for i in range(0, len(texts), 50):
             batch = texts[i : i + 50]
             resp = self._http.post(
-                f"{self.embedding_api_base}/v1/embeddings",
+                f"{self.embedding_api_base}/embeddings",
                 json={"model": self.embedding_model, "input": batch},
                 headers={
                     "Authorization": f"Bearer {self.embedding_api_key}",
@@ -73,28 +73,64 @@ class LanceDBSearcher:
         if not self.rerank_api_key or not documents:
             return [(i, 1.0) for i in range(min(top_n, len(documents)))]
 
+        # Try multiple URL patterns and formats
+        from urllib.parse import urlparse
+
+        attempts = [
+            # Jina-style at /rerank
+            (f"{self.rerank_api_base}/rerank", {
+                "model": self.rerank_model, "query": query,
+                "documents": documents, "top_n": top_n,
+            }),
+            # Cohere-style at /rerank
+            (f"{self.rerank_api_base}/rerank", {
+                "model": self.rerank_model, "query": query,
+                "documents": documents,
+            }),
+            # DashScope native
+            (f"https://dashscope.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank", {
+                "model": self.rerank_model,
+                "input": {"query": query, "documents": documents},
+                "parameters": {"top_n": top_n},
+            }),
+        ]
+
+        # Also try DashScope native on the same host
         try:
-            resp = self._http.post(
-                f"{self.rerank_api_base}/v1/rerank",
-                json={
-                    "model": self.rerank_model,
-                    "query": query,
-                    "documents": documents,
-                    "top_n": top_n,
-                },
-                headers={
-                    "Authorization": f"Bearer {self.rerank_api_key}",
-                    "Content-Type": "application/json",
-                },
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            return [
-                (r["index"], r.get("relevance_score", 0.0))
-                for r in data.get("results", [])[:top_n]
-            ]
+            parsed = urlparse(self.rerank_api_base)
+            if parsed.hostname and "dashscope" in parsed.hostname:
+                attempts.insert(2, (
+                    f"https://{parsed.hostname}/api/v1/services/rerank/text-rerank/text-rerank",
+                    {
+                        "model": self.rerank_model,
+                        "input": {"query": query, "documents": documents},
+                        "parameters": {"top_n": top_n},
+                    },
+                ))
         except Exception:
-            return [(i, 1.0) for i in range(min(top_n, len(documents)))]
+            pass
+
+        for url, body in attempts:
+            try:
+                resp = self._http.post(
+                    url,
+                    json=body,
+                    headers={
+                        "Authorization": f"Bearer {self.rerank_api_key}",
+                        "Content-Type": "application/json",
+                    },
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    results = data.get("results") or data.get("output", {}).get("results", [])
+                    return [
+                        (r["index"], r.get("relevance_score", 0.0))
+                        for r in results[:top_n]
+                    ]
+            except Exception:
+                continue
+
+        return [(i, 1.0) for i in range(min(top_n, len(documents)))]
 
     def search(
         self,
@@ -139,7 +175,7 @@ class LanceDBSearcher:
                     "doc_id": r.get("doc_id", ""),
                     "doc_name": r.get("doc_name", ""),
                     "content": r.get("content", ""),
-                    "score": float(r.get("_distance", 1.0 - i * 0.05)),
+                    "score": 1.0 / (1.0 + float(r.get("_distance", 0))),
                     "metadata": metadata,
                 }
             )
@@ -198,7 +234,11 @@ class LanceDBSearcher:
             return {"error": f"Knowledge base not found: {kb_id}"}
 
         table = self.db.open_table(table_name)
-        df = table.to_pandas()
+        try:
+            df = table.to_pandas()
+        except Exception:
+            return {"error": f"Failed to query table: {kb_id}"}
+
         doc_df = df[df["doc_id"] == doc_id]
 
         if len(doc_df) == 0:

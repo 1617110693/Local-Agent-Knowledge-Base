@@ -5,11 +5,12 @@ mod models;
 mod storage;
 
 use commands::{
-    documents, knowledge_base, parsing, python_service, settings,
+    claude_config, documents, knowledge_base, parsing, python_service, settings,
 };
 use models::settings::AppSettings;
 use storage::file_store::FileStore;
 use tauri::Manager;
+use std::path::PathBuf;
 use std::sync::Mutex;
 
 /// Main application state
@@ -17,6 +18,9 @@ pub struct AppState {
     pub settings: Mutex<AppSettings>,
     pub file_store: FileStore,
     pub python_port: Mutex<u16>,
+    /// The directory where settings.json lives (~/.local-knowledge-base).
+    /// This is separate from file_store.root_dir() which may be a custom data_dir.
+    pub settings_dir: PathBuf,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -27,18 +31,30 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .setup(|app| {
-            // Use ~/.local-knowledge-base as the data directory (consistent across platforms)
+            // Default data directory: ~/.local-knowledge-base
             let home = std::env::var("HOME")
                 .or_else(|_| std::env::var("USERPROFILE"))
                 .expect("Failed to get home directory");
-            let app_data_dir = std::path::PathBuf::from(home).join(".local-knowledge-base");
-            std::fs::create_dir_all(&app_data_dir).ok();
+            let default_dir = std::path::PathBuf::from(&home).join(".local-knowledge-base");
 
-            // Initialize file store
-            let file_store = FileStore::new(app_data_dir.clone());
+            // Load settings from default location first
+            let settings = AppSettings::load(&default_dir).unwrap_or_default();
 
-            // Load or create settings
-            let settings = AppSettings::load(&app_data_dir).unwrap_or_default();
+            // Use custom data_dir if set, otherwise default
+            let data_dir = if settings.data_dir.is_empty() {
+                default_dir.clone()
+            } else {
+                std::path::PathBuf::from(&settings.data_dir)
+            };
+            std::fs::create_dir_all(&data_dir).ok();
+
+            // Always ensure default dir exists for settings.json
+            if data_dir != default_dir {
+                std::fs::create_dir_all(&default_dir).ok();
+            }
+
+            // Initialize file store at the chosen data directory
+            let file_store = FileStore::new(data_dir);
 
             // Allocate Python backend port
             let port = settings.python_port;
@@ -48,6 +64,7 @@ pub fn run() {
                 settings: Mutex::new(settings),
                 file_store,
                 python_port: Mutex::new(port),
+                settings_dir: default_dir,
             });
             app.manage(python_service::PythonProcess(Mutex::new(None)));
 
@@ -67,6 +84,7 @@ pub fn run() {
             documents::delete_document,
             documents::list_documents,
             documents::get_document_content,
+            documents::save_document_chunks,
             // Parsing commands
             parsing::start_parsing,
             parsing::poll_parse_status,
@@ -76,6 +94,7 @@ pub fn run() {
             python_service::start_python_backend,
             python_service::stop_python_backend,
             python_service::get_python_backend_status,
+            claude_config::configure_claude_mcp,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

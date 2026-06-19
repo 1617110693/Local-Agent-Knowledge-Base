@@ -6,7 +6,7 @@ import httpx
 
 
 class OpenAICompatibleEmbedder:
-    """Client for OpenAI-compatible /v1/embeddings endpoint."""
+    """Client for OpenAI-compatible embeddings endpoint."""
 
     def __init__(
         self,
@@ -40,7 +40,7 @@ class OpenAICompatibleEmbedder:
         return results[0] if results else []
 
     def _embed_batch(self, texts: List[str]) -> List[List[float]]:
-        url = f"{self.api_base}/v1/embeddings"
+        url = f"{self.api_base}/embeddings"
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",

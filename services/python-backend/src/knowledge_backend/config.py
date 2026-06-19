@@ -12,12 +12,12 @@ class BackendConfig(BaseSettings):
     knowledge_backend_port: int = 17390
 
     # Embedding API
-    embedding_api_base: str = "https://api.openai.com"
+    embedding_api_base: str = "https://api.openai.com/v1"
     embedding_api_key: str = ""
     embedding_model: str = "text-embedding-3-small"
 
     # Rerank API
-    rerank_api_base: str = "https://api.jina.ai"
+    rerank_api_base: str = "https://api.jina.ai/v1"
     rerank_api_key: str = ""
     rerank_model: str = "jina-reranker-v2-base-multilingual"
 

@@ -1,14 +1,22 @@
 import { useEffect, useState } from "react";
 import { useSettingsStore } from "../../stores/useSettingsStore";
 import { useI18n } from "../../i18n";
+import { configureClaudeMCP } from "../../services/tauriBridge";
+import { testEmbedding, testRerank } from "../../services/pythonClient";
 import type { AppSettings } from "../../types";
-import { Save, CheckCircle, Loader2 } from "lucide-react";
+import { Save, CheckCircle, Loader2, Terminal, Check, X, FolderOpen, FlaskConical } from "lucide-react";
 
 export function SettingsPanel() {
   const { t } = useI18n();
   const { settings, loadSettings, saveSettings, pythonRunning, startPython } = useSettingsStore();
   const [form, setForm] = useState<AppSettings>(settings);
   const [saved, setSaved] = useState(false);
+  const [claudeStatus, setClaudeStatus] = useState<{ success: boolean; message: string } | null>(null);
+  const [configuring, setConfiguring] = useState(false);
+  const [testingEmbedding, setTestingEmbedding] = useState(false);
+  const [testEmbeddingResult, setTestEmbeddingResult] = useState<{ ok: boolean; msg: string } | null>(null);
+  const [testingRerank, setTestingRerank] = useState(false);
+  const [testRerankResult, setTestRerankResult] = useState<{ ok: boolean; msg: string } | null>(null);
 
   useEffect(() => { loadSettings(); }, []);
   useEffect(() => { setForm(settings); }, [settings]);
@@ -32,6 +40,34 @@ export function SettingsPanel() {
         </button>
       </div>
 
+      {/* General */}
+      <section className="mb-8">
+        <h3 className="text-lg font-semibold mb-4 border-b pb-2">{t("settings.general")}</h3>
+        <div className="mb-4">
+          <label className="block text-sm font-medium mb-1">{t("settings.dataDir")}</label>
+          <div className="flex gap-2">
+            <input type="text" value={form.data_dir}
+              onChange={(e) => update("data_dir", e.target.value)}
+              placeholder="~/.local-knowledge-base"
+              className="flex-1 px-3 py-2 border rounded-md text-sm bg-background" />
+            <button
+              onClick={async () => {
+                try {
+                  const { open } = await import("@tauri-apps/plugin-dialog");
+                  const dir = await open({ directory: true, title: t("settings.dataDir") });
+                  if (dir) update("data_dir", dir as string);
+                } catch { /* dialog cancelled */ }
+              }}
+              className="px-3 py-2 border rounded-md hover:bg-muted transition-colors"
+              title={t("settings.browse")}
+            >
+              <FolderOpen className="w-4 h-4" />
+            </button>
+          </div>
+          <p className="text-xs text-muted-foreground mt-1">{t("settings.dataDirHint")}</p>
+        </div>
+      </section>
+
       {/* MinerU */}
       <section className="mb-8">
         <h3 className="text-lg font-semibold mb-4 border-b pb-2">{t("settings.mineru")}</h3>
@@ -50,7 +86,7 @@ export function SettingsPanel() {
       {/* Embedding */}
       <section className="mb-8">
         <h3 className="text-lg font-semibold mb-4 border-b pb-2">{t("settings.embedding")}</h3>
-        {[{ l: t("settings.apiBase"), k: "embedding_api_base", ph: "https://api.openai.com" },
+        {[{ l: t("settings.apiBase"), k: "embedding_api_base", ph: "https://api.openai.com/v1" },
           { l: t("settings.apiKey"), k: "embedding_api_key", ph: "" },
           { l: t("settings.model"), k: "embedding_model", ph: "text-embedding-3-small" }].map(({ l, k, ph }) => (
           <div key={k} className="mb-4">
@@ -60,12 +96,48 @@ export function SettingsPanel() {
               className="w-full px-3 py-2 border rounded-md text-sm bg-background" />
           </div>
         ))}
+        <button
+          onClick={async () => {
+            setTestingEmbedding(true);
+            setTestEmbeddingResult(null);
+            try {
+              const r = await testEmbedding({
+                api_base: form.embedding_api_base,
+                api_key: form.embedding_api_key,
+                model: form.embedding_model,
+              });
+              setTestEmbeddingResult({
+                ok: r.valid,
+                msg: r.valid
+                  ? t("settings.testSuccess", { dim: String(r.dimension ?? "?") })
+                  : `${t("settings.testFailed")}: ${r.detail || r.status}`,
+              });
+            } catch (e) {
+              setTestEmbeddingResult({ ok: false, msg: `${t("settings.testFailed")}: ${String(e)}` });
+            }
+            setTestingEmbedding(false);
+          }}
+          disabled={testingEmbedding || !pythonRunning}
+          className="flex items-center gap-2 px-3 py-1.5 border rounded-md text-xs font-medium hover:bg-muted transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          title={!pythonRunning ? t("settings.stopped") : undefined}
+        >
+          {testingEmbedding ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FlaskConical className="w-3.5 h-3.5" />}
+          {testingEmbedding ? t("settings.testing") : t("settings.testConnection")}
+        </button>
+        {testEmbeddingResult && (
+          <div className={`mt-2 p-2.5 rounded-md text-xs flex items-start gap-2 ${
+            testEmbeddingResult.ok ? "bg-green-50 border border-green-200 text-green-800" : "bg-red-50 border border-red-200 text-red-700"
+          }`}>
+            {testEmbeddingResult.ok ? <Check className="w-3.5 h-3.5 mt-0.5 shrink-0" /> : <X className="w-3.5 h-3.5 mt-0.5 shrink-0" />}
+            <span className="whitespace-pre-wrap">{testEmbeddingResult.msg}</span>
+          </div>
+        )}
       </section>
 
       {/* Rerank */}
       <section className="mb-8">
         <h3 className="text-lg font-semibold mb-4 border-b pb-2">{t("settings.rerank")}</h3>
-        {[{ l: t("settings.apiBase"), k: "rerank_api_base", ph: "https://api.jina.ai" },
+        {[{ l: t("settings.apiBase"), k: "rerank_api_base", ph: "https://api.jina.ai/v1" },
           { l: t("settings.apiKey"), k: "rerank_api_key", ph: "" },
           { l: t("settings.model"), k: "rerank_model", ph: "jina-reranker-v2-base-multilingual" }].map(({ l, k, ph }) => (
           <div key={k} className="mb-4">
@@ -75,6 +147,42 @@ export function SettingsPanel() {
               className="w-full px-3 py-2 border rounded-md text-sm bg-background" />
           </div>
         ))}
+        <button
+          onClick={async () => {
+            setTestingRerank(true);
+            setTestRerankResult(null);
+            try {
+              const r = await testRerank({
+                api_base: form.rerank_api_base,
+                api_key: form.rerank_api_key,
+                model: form.rerank_model,
+              });
+              setTestRerankResult({
+                ok: r.valid,
+                msg: r.valid
+                  ? t("settings.testSuccessRerank")
+                  : `${t("settings.testFailed")}: ${r.detail || r.status}`,
+              });
+            } catch (e) {
+              setTestRerankResult({ ok: false, msg: `${t("settings.testFailed")}: ${String(e)}` });
+            }
+            setTestingRerank(false);
+          }}
+          disabled={testingRerank || !pythonRunning}
+          className="flex items-center gap-2 px-3 py-1.5 border rounded-md text-xs font-medium hover:bg-muted transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          title={!pythonRunning ? t("settings.stopped") : undefined}
+        >
+          {testingRerank ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FlaskConical className="w-3.5 h-3.5" />}
+          {testingRerank ? t("settings.testing") : t("settings.testConnection")}
+        </button>
+        {testRerankResult && (
+          <div className={`mt-2 p-2.5 rounded-md text-xs flex items-start gap-2 ${
+            testRerankResult.ok ? "bg-green-50 border border-green-200 text-green-800" : "bg-red-50 border border-red-200 text-red-700"
+          }`}>
+            {testRerankResult.ok ? <Check className="w-3.5 h-3.5 mt-0.5 shrink-0" /> : <X className="w-3.5 h-3.5 mt-0.5 shrink-0" />}
+            <span className="whitespace-pre-wrap">{testRerankResult.msg}</span>
+          </div>
+        )}
       </section>
 
       {/* Chunking */}
@@ -121,6 +229,42 @@ export function SettingsPanel() {
             onChange={(e) => update("python_port", parseInt(e.target.value) || 17390)}
             className="w-full px-3 py-2 border rounded-md text-sm bg-background" />
         </div>
+      </section>
+
+      {/* Claude Code MCP */}
+      <section className="mb-8">
+        <h3 className="text-lg font-semibold mb-4 border-b pb-2">{t("settings.claudeMCP")}</h3>
+        <p className="text-sm text-muted-foreground mb-4">{t("settings.claudeMCPDesc")}</p>
+        <button
+          onClick={async () => {
+            setConfiguring(true);
+            setClaudeStatus(null);
+            try {
+              const result = await configureClaudeMCP();
+              setClaudeStatus({ success: result.success, message: result.message });
+            } catch (e) {
+              setClaudeStatus({ success: false, message: String(e) });
+            }
+            setConfiguring(false);
+          }}
+          disabled={configuring}
+          className="flex items-center gap-2 px-4 py-2.5 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50"
+        >
+          {configuring ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <Terminal className="w-4 h-4" />
+          )}
+          {t("settings.configureClaude")}
+        </button>
+        {claudeStatus && (
+          <div className={`mt-3 p-3 rounded-lg text-sm flex items-start gap-2 ${
+            claudeStatus.success ? "bg-green-50 border border-green-200 text-green-800" : "bg-red-50 border border-red-200 text-red-700"
+          }`}>
+            {claudeStatus.success ? <Check className="w-4 h-4 mt-0.5 shrink-0" /> : <X className="w-4 h-4 mt-0.5 shrink-0" />}
+            <p className="whitespace-pre-wrap">{claudeStatus.message}</p>
+          </div>
+        )}
       </section>
     </div>
   );

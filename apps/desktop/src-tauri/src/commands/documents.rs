@@ -39,6 +39,7 @@ pub async fn upload_document(
     let supported = [
         "pdf", "doc", "docx", "ppt", "pptx", "xls", "xlsx",
         "png", "jpg", "jpeg", "jp2", "webp", "gif", "bmp", "html",
+        "md", "markdown", "txt",
     ];
     if !supported.contains(&extension.as_str()) {
         return Err(AppError::InvalidInput(format!(
@@ -68,7 +69,21 @@ pub async fn delete_document(
     kb_id: String,
     doc_id: String,
 ) -> CommandResult<()> {
-    state.file_store.remove_document(&kb_id, &doc_id)
+    // Remove document from file store
+    state.file_store.remove_document(&kb_id, &doc_id)?;
+
+    // Also clean up vector chunks from LanceDB via Python backend
+    let port = *state.python_port.lock().unwrap();
+    let url = format!("http://127.0.0.1:{}/api/v1/delete-chunks", port);
+    let client = reqwest::Client::new();
+    let _ = client
+        .post(&url)
+        .json(&serde_json::json!({"kb_id": kb_id, "doc_id": doc_id}))
+        .timeout(std::time::Duration::from_secs(10))
+        .send()
+        .await;
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -86,4 +101,14 @@ pub async fn get_document_content(
     doc_id: String,
 ) -> CommandResult<DocumentContent> {
     state.file_store.get_document_content(&kb_id, &doc_id)
+}
+
+#[tauri::command]
+pub async fn save_document_chunks(
+    state: State<'_, AppState>,
+    kb_id: String,
+    doc_id: String,
+    chunk_count: u32,
+) -> CommandResult<Document> {
+    state.file_store.update_document_chunks(&kb_id, &doc_id, chunk_count)
 }

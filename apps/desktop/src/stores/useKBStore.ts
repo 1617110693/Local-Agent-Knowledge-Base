@@ -64,6 +64,14 @@ export const useKBStore = create<KBState>((set, get) => ({
   uploadDocument: async (kbId: string, filePath: string) => {
     const doc = await tauriBridge.uploadDocument(kbId, filePath);
     set((s) => ({ documents: [doc, ...s.documents] }));
+    // Auto-start parsing — .md/.txt complete instantly, others go async
+    try {
+      await tauriBridge.startParsing(kbId, doc.id);
+      const updated = await tauriBridge.pollParseStatus(kbId, doc.id);
+      set((s) => ({
+        documents: s.documents.map((d) => (d.id === doc.id ? updated : d)),
+      }));
+    } catch { /* ignore */ }
   },
 
   deleteDocument: async (kbId: string, docId: string) => {

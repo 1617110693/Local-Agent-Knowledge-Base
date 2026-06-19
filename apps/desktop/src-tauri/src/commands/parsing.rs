@@ -16,10 +16,31 @@ pub async fn start_parsing(
     // Get settings for token
     let settings = state.settings.lock().unwrap().clone();
 
-    // Determine the file path
     let doc_dir = state.file_store.get_doc_dir(&kb_id, &doc_id);
     let ext = doc.file_type;
     let original_path = doc_dir.join(format!("original.{}", ext));
+
+    // Markdown and plain-text files: skip MinerU, directly use content as parsed result
+    let is_text = matches!(ext.as_str(), "md" | "markdown" | "txt");
+    if is_text {
+        let content = std::fs::read_to_string(&original_path)?;
+        state
+            .file_store
+            .save_parsed_markdown(&kb_id, &doc_id, &content)?;
+        state.file_store.update_document_status(
+            &kb_id,
+            &doc_id,
+            ParseStatus::Done,
+            None,
+        )?;
+        return Ok(ParseTask {
+            task_id: doc_id.clone(),
+            state: crate::models::ParseTaskState::Done,
+            progress: None,
+            full_zip_url: None,
+            err_msg: None,
+        });
+    }
 
     // Check if file is small enough for agent mode
     let file_size = std::fs::metadata(&original_path)

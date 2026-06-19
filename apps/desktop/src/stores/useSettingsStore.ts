@@ -3,6 +3,21 @@ import type { AppSettings } from "../types";
 import { DEFAULT_SETTINGS } from "../types";
 import * as tauriBridge from "../services/tauriBridge";
 
+function extractError(e: unknown): string {
+  if (typeof e === "string") return e;
+  if (e && typeof e === "object") {
+    const obj = e as Record<string, unknown>;
+    if (typeof obj.message === "string") return obj.message;
+    if (typeof obj.error === "string") return obj.error;
+    if (typeof obj.toString === "function" && obj.toString !== Object.prototype.toString) {
+      return obj.toString();
+    }
+    // Tauri often stringifies the error in the invoke wrapper
+    try { return JSON.stringify(e); } catch { return "Unknown error"; }
+  }
+  return String(e ?? "Unknown error");
+}
+
 interface SettingsState {
   settings: AppSettings;
   loading: boolean;
@@ -47,7 +62,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         pythonError: status.error || null,
       });
     } catch (e) {
-      set({ pythonRunning: false, pythonError: String(e) });
+      set({ pythonRunning: false, pythonError: extractError(e) });
     }
   },
 
@@ -60,8 +75,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         pythonError: status.error || null,
       });
       return status.running;
-    } catch {
-      set({ pythonRunning: false });
+    } catch (e) {
+      set({ pythonRunning: false, pythonError: extractError(e) });
       return false;
     }
   },
