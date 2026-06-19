@@ -401,13 +401,62 @@ uv run pytest
 
 ### Building for Release
 
-```bash
-# Build the Tauri desktop app
-cd apps/desktop && npm run tauri build
+The entire project — desktop app, Python backend, and MCP server — is packaged into a **single installer**. Users install it like any normal app; no Python, uv, or npm required.
 
-# Package the MCP server for distribution
-cd apps/mcp-server
-uv build
+**One-command release** (Windows PowerShell):
+
+```powershell
+.\scripts\release.ps1 0.1.0
+```
+
+This script automates the full pipeline:
+
+| Step | What happens |
+|------|-------------|
+| 1. Version bump | Syncs version across all package files |
+| 2. Install deps | `npm install` + `uv sync` for all sub-projects |
+| 3. PyInstaller | Builds `knowledge-backend.exe` (Python backend → standalone binary) |
+| 4. PyInstaller | Builds `local-kb-mcp.exe` (MCP server → standalone binary) |
+| 5. Tauri bundle | Copies both .exe files as sidecars, then builds the desktop installer |
+
+**Output**: A single `.msi` (Windows) / `.dmg` (macOS) / `.AppImage` (Linux) in:
+
+```
+apps/desktop/src-tauri/target/release/bundle/
+```
+
+**What the installer contains**:
+
+```
+Installed App/
+├── local-knowledge-base.exe      # Desktop app (Tauri + React)
+├── knowledge-backend.exe         # Python backend (standalone, no Python needed)
+├── local-kb-mcp.exe              # MCP server (standalone, no Python needed)
+└── ... (icons, resources)
+```
+
+**For the end user**:
+1. Download the `.msi` / `.dmg` from GitHub Releases
+2. Install and launch
+3. Configure API keys in Settings
+4. Start uploading documents
+
+**For Claude Code MCP integration**, the user points to the installed `local-kb-mcp.exe`:
+
+```json
+{
+  "mcpServers": {
+    "local-knowledge-base": {
+      "command": "C:\\Program Files\\Local Knowledge Base\\local-kb-mcp.exe",
+      "env": {
+        "KNOWLEDGE_BASE_DATA_DIR": "C:\\Users\\...\\.local-knowledge-base",
+        "EMBEDDING_API_BASE": "https://api.openai.com",
+        "EMBEDDING_API_KEY": "sk-...",
+        "EMBEDDING_MODEL": "text-embedding-3-small"
+      }
+    }
+  }
+}
 ```
 
 ---

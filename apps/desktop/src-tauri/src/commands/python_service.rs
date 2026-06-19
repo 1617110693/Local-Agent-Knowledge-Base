@@ -2,10 +2,10 @@ use crate::error::{AppError, CommandResult};
 use crate::AppState;
 use serde::Serialize;
 use tauri::State;
+use std::io::Read;
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use std::time::Duration;
-use std::io::Read;
 
 /// Python backend process handle
 pub struct PythonProcess(pub Mutex<Option<Child>>);
@@ -18,14 +18,38 @@ pub struct PythonBackendStatus {
     pub error: Option<String>,
 }
 
-fn resolve_backend_dir() -> std::path::PathBuf {
-    // CARGO_MANIFEST_DIR = .../apps/desktop/src-tauri
-    // Go up 3 levels to monorepo root, then into services/python-backend
+/// Find the bundled sidecar .exe, or fall back to uv run from source
+fn resolve_backend_command() -> (String, Vec<String>) {
+    // Try bundled sidecar first (production)
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            let sidecar = dir.join("knowledge-backend.exe");
+            if sidecar.exists() {
+                return (sidecar.to_string_lossy().to_string(), vec![]);
+            }
+            // macOS / Linux naming
+            let sidecar = dir.join("knowledge-backend");
+            if sidecar.exists() {
+                return (sidecar.to_string_lossy().to_string(), vec![]);
+            }
+        }
+    }
+
+    // Dev mode: use uv run from source tree
     let manifest = std::env::var("CARGO_MANIFEST_DIR").unwrap_or_default();
-    let p = std::path::PathBuf::from(&manifest);
-    // In dev: manifest = .../apps/desktop/src-tauri → go ../../../services/python-backend
-    let backend = p.join("..").join("..").join("..").join("services").join("python-backend");
-    backend.canonicalize().unwrap_or(backend)
+    let backend_dir = std::path::PathBuf::from(&manifest)
+        .join("..").join("..").join("..")
+        .join("services").join("python-backend");
+
+    (
+        "uv".to_string(),
+        vec![
+            "run".to_string(),
+            "--directory".to_string(),
+            backend_dir.to_string_lossy().to_string(),
+            "knowledge-backend".to_string(),
+        ],
+    )
 }
 
 #[tauri::command]
@@ -41,7 +65,7 @@ pub async fn start_python_backend(
 ) -> CommandResult<PythonBackendStatus> {
     let port = *state.python_port.lock().unwrap();
     let app_data_dir = state.file_store.root_dir().clone();
-    let backend_dir = resolve_backend_dir();
+    let (cmd, args) = resolve_backend_command();
 
     // Kill existing process if any
     {
@@ -51,27 +75,25 @@ pub async fn start_python_backend(
             let _ = child.wait();
         }
 
-        let child = Command::new("uv")
-            .args([
-                "run",
-                "--directory",
-                backend_dir.to_str().unwrap_or("."),
-                "knowledge-backend",
-            ])
+        let mut child = Command::new(&cmd);
+        child
+            .args(&args)
             .env("KNOWLEDGE_BASE_DATA_DIR", app_data_dir.to_str().unwrap_or(""))
             .env("KNOWLEDGE_BACKEND_PORT", port.to_string())
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|e| AppError::PythonBackend(format!(
-                "Failed to start uv run in {}: {}. Is uv installed? https://docs.astral.sh/uv/",
-                backend_dir.display(), e
-            )))?;
+            .stderr(Stdio::piped());
+
+        let child = child.spawn().map_err(|e| {
+            AppError::PythonBackend(format!(
+                "Failed to start backend ({}): {}. In dev, run: uv sync",
+                if args.is_empty() { "bundled" } else { "uv run" }, e
+            ))
+        })?;
 
         *proc = Some(child);
     }
 
-    // Health check loop — longer timeout for first uv sync
+    // Health check
     let url = format!("http://127.0.0.1:{}/api/v1/health", port);
     let client = reqwest::Client::new();
 
@@ -87,7 +109,6 @@ pub async fn start_python_backend(
                 });
             }
         }
-        // After 10s, check if process already died
         if i == 20 {
             let mut proc = py_state.0.lock().unwrap();
             if let Some(ref mut child) = *proc {
@@ -97,15 +118,9 @@ pub async fn start_python_backend(
                         if let Some(ref mut s) = child.stderr {
                             s.read_to_string(&mut stderr).ok();
                         }
-                        let msg = format!(
-                            "Python backend exited early with {}.\nstderr: {}",
-                            status, stderr
-                        );
                         return Ok(PythonBackendStatus {
-                            running: false,
-                            url: format!("http://127.0.0.1:{}", port),
-                            port,
-                            error: Some(msg),
+                            running: false, url: format!("http://127.0.0.1:{}", port), port,
+                            error: Some(format!("Backend exited early ({}).\n{}", status, stderr)),
                         });
                     }
                     _ => {}
@@ -114,8 +129,7 @@ pub async fn start_python_backend(
         }
     }
 
-    // Timeout — read stderr for diagnostics
-    let mut err_msg = "Python backend failed to start within 60s timeout".to_string();
+    let mut err_msg = "Backend failed to start within 60s".to_string();
     {
         let mut proc = py_state.0.lock().unwrap();
         if let Some(ref mut child) = *proc {
@@ -125,7 +139,7 @@ pub async fn start_python_backend(
                     if let Some(ref mut s) = child.stderr {
                         s.read_to_string(&mut stderr).ok();
                     }
-                    err_msg = format!("Python backend exited with {}.\n{}", status, stderr);
+                    err_msg = format!("Backend exited with {}.\n{}", status, stderr);
                 }
                 _ => {}
             }

@@ -395,13 +395,62 @@ uv run pytest
 
 ### 发布构建
 
-```bash
-# 构建 Tauri 桌面应用
-cd apps/desktop && npm run tauri build
+整个项目——桌面应用、Python 后端、MCP Server——打包进**一个安装包**。用户像安装普通软件一样使用，无需 Python、uv 或 npm。
 
-# 打包 MCP Server 用于分发
-cd apps/mcp-server
-uv build
+**一键发布**（Windows PowerShell）：
+
+```powershell
+.\scripts\release.ps1 0.1.0
+```
+
+脚本自动完成全流程：
+
+| 步骤 | 内容 |
+|------|------|
+| 1. 版本同步 | 更新所有包的版本号 |
+| 2. 安装依赖 | `npm install` + `uv sync` |
+| 3. PyInstaller | 将 Python 后端打包为独立 `knowledge-backend.exe` |
+| 4. PyInstaller | 将 MCP Server 打包为独立 `local-kb-mcp.exe` |
+| 5. Tauri 打包 | 将两个 exe 作为 sidecar 打入桌面安装程序 |
+
+**产物**：单个 `.msi`（Windows）/ `.dmg`（macOS）/ `.AppImage`（Linux），位于：
+
+```
+apps/desktop/src-tauri/target/release/bundle/
+```
+
+**安装包内容**：
+
+```
+安装目录/
+├── local-knowledge-base.exe      # 桌面应用（Tauri + React）
+├── knowledge-backend.exe         # Python 后端（独立运行，无需 Python）
+├── local-kb-mcp.exe              # MCP Server（独立运行，无需 Python）
+└── ...（图标、资源文件）
+```
+
+**用户使用流程**：
+1. 从 GitHub Releases 下载 `.msi` / `.dmg`
+2. 安装并启动
+3. 在设置中配置 API Key
+4. 开始上传文档
+
+**Claude Code MCP 集成**，用户直接指向安装目录中的 `local-kb-mcp.exe`：
+
+```json
+{
+  "mcpServers": {
+    "local-knowledge-base": {
+      "command": "C:\\Program Files\\Local Knowledge Base\\local-kb-mcp.exe",
+      "env": {
+        "KNOWLEDGE_BASE_DATA_DIR": "C:\\Users\\...\\.local-knowledge-base",
+        "EMBEDDING_API_BASE": "https://api.openai.com",
+        "EMBEDDING_API_KEY": "sk-...",
+        "EMBEDDING_MODEL": "text-embedding-3-small"
+      }
+    }
+  }
+}
 ```
 
 ---
