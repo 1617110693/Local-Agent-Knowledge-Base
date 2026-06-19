@@ -56,7 +56,7 @@ export async function getKB(kbId: string): Promise<KnowledgeBase> {
 export async function uploadDocument(
   kbId: string,
   filePath: string
-): Promise<Document> {
+): Promise<{ document: Document; parts: Document[] }> {
   return invoke("upload_document", { kbId, filePath });
 }
 
@@ -137,6 +137,10 @@ export async function getPythonBackendStatus(): Promise<{
 }
 
 // ── Claude MCP Config ──
+
+export async function getMcpConfigJson(): Promise<string> {
+  return invoke("get_mcp_config_json");
+}
 
 export async function configureClaudeMCP(): Promise<{
   success: boolean;

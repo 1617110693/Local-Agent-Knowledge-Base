@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useSettingsStore } from "../../stores/useSettingsStore";
 import { useI18n } from "../../i18n";
-import { configureClaudeMCP } from "../../services/tauriBridge";
+import { configureClaudeMCP, getMcpConfigJson } from "../../services/tauriBridge";
 import { testEmbedding, testRerank } from "../../services/pythonClient";
 import type { AppSettings } from "../../types";
 import { Save, CheckCircle, Loader2, Terminal, Check, X, FolderOpen, FlaskConical, Copy, ClipboardCheck } from "lucide-react";
@@ -16,19 +16,9 @@ export function SettingsPanel() {
   const [copiedMCP, setCopiedMCP] = useState(false);
 
   const handleCopyMCPConfig = async () => {
-    const config = {
-      mcpServers: {
-        "local-knowledge-base": {
-          command: "uv",
-          args: ["run", "--directory", "D:/AI/mcp/local-knowledge-base/apps/mcp-server", "local-kb-mcp"],
-          env: {
-            KNOWLEDGE_BASE_DATA_DIR: form.data_dir || "%USERPROFILE%/.local-knowledge-base",
-          },
-        },
-      },
-    };
     try {
-      await navigator.clipboard.writeText(JSON.stringify(config, null, 2));
+      const config = await getMcpConfigJson();
+      await navigator.clipboard.writeText(config);
       setCopiedMCP(true);
       setTimeout(() => setCopiedMCP(false), 2000);
     } catch {

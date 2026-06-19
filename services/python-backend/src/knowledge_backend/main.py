@@ -6,7 +6,7 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .api import documents, knowledge_bases, search, settings
+from .api import documents, knowledge_bases, search, settings, utils
 
 
 def create_app() -> FastAPI:
@@ -30,6 +30,7 @@ def create_app() -> FastAPI:
         knowledge_bases.router, prefix="/api/v1", tags=["knowledge_bases"]
     )
     app.include_router(settings.router, prefix="/api/v1", tags=["settings"])
+    app.include_router(utils.router, prefix="/api/v1", tags=["utils"])
 
     @app.get("/api/v1/health")
     async def health():

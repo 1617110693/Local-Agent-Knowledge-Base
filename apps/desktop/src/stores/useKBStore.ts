@@ -103,52 +103,54 @@ export const useKBStore = create<KBState>((set, get) => ({
       }
     }
 
-    // 2. Upload
-    const doc = await tauriBridge.uploadDocument(kbId, filePath);
-    set((s) => ({ documents: [doc, ...s.documents] }));
+    // 2. Upload (may split large PDFs into parts)
+    const uploadResult = await tauriBridge.uploadDocument(kbId, filePath);
+    const doc = uploadResult.document;
+    const allDocs = [doc, ...uploadResult.parts];
+    set((s) => ({ documents: [...allDocs, ...s.documents] }));
 
-    // 3. Parse
-    let parsed = doc;
-    try {
-      await tauriBridge.startParsing(kbId, doc.id);
-      parsed = await tauriBridge.pollParseStatus(kbId, doc.id);
-    } catch { /* parse failed, keep original doc */ }
-    set((s) => ({
-      documents: s.documents.map((d) => (d.id === doc.id ? parsed : d)),
-    }));
-
-    // 4. Index (if parsing succeeded)
-    if (parsed.parse_status === "done") {
-      set((s) => ({ indexingIds: new Set([...s.indexingIds, doc.id]) }));
+    // 3. Parse each document
+    for (const d of allDocs) {
       try {
-        const { getDocumentContent, saveDocumentChunks } = await import(
-          "../services/tauriBridge"
-        );
-        const { indexDocument } = await import("../services/pythonClient");
-        const content = await getDocumentContent(kbId, doc.id);
-        const result = await indexDocument({
-          kb_id: kbId,
-          doc_id: doc.id,
-          doc_name: doc.name,
-          markdown_content: content.markdown,
-        });
-        await saveDocumentChunks(kbId, doc.id, result.chunk_count, result.embedding_model, result.embedding_dim);
+        await tauriBridge.startParsing(kbId, d.id);
+        const parsed = await tauriBridge.pollParseStatus(kbId, d.id);
         set((s) => ({
-          documents: s.documents.map((d) =>
-            d.id === doc.id ? { ...d, chunk_count: result.chunk_count, embedding_model: result.embedding_model } : d
-          ),
-          indexingIds: new Set([...s.indexingIds].filter((id) => id !== doc.id)),
-          // Update KB's embedding model (auto-bind on first index)
-          knowledgeBases: s.knowledgeBases.map((k) =>
-            k.id === kbId ? { ...k, embedding_model: result.embedding_model, embedding_dim: result.embedding_dim } : k
-          ),
+          documents: s.documents.map((dd) => (dd.id === d.id ? parsed : dd)),
         }));
-      } catch (e) {
-        console.error("Auto-index failed:", e);
-        set((s) => ({
-          indexingIds: new Set([...s.indexingIds].filter((id) => id !== doc.id)),
-        }));
-      }
+
+        // 4. Index (if parsing succeeded)
+        if (parsed.parse_status === "done") {
+          set((s) => ({ indexingIds: new Set([...s.indexingIds, d.id]) }));
+          try {
+            const { getDocumentContent, saveDocumentChunks } = await import(
+              "../services/tauriBridge"
+            );
+            const { indexDocument } = await import("../services/pythonClient");
+            const content = await getDocumentContent(kbId, d.id);
+            const result = await indexDocument({
+              kb_id: kbId,
+              doc_id: d.id,
+              doc_name: d.name,
+              markdown_content: content.markdown,
+            });
+            await saveDocumentChunks(kbId, d.id, result.chunk_count, result.embedding_model, result.embedding_dim);
+            set((s) => ({
+              documents: s.documents.map((dd) =>
+                dd.id === d.id ? { ...dd, chunk_count: result.chunk_count, embedding_model: result.embedding_model } : dd
+              ),
+              knowledgeBases: s.knowledgeBases.map((k) =>
+                k.id === kbId ? { ...k, embedding_model: result.embedding_model, embedding_dim: result.embedding_dim } : k
+              ),
+              indexingIds: new Set([...s.indexingIds].filter((id) => id !== d.id)),
+            }));
+          } catch (e) {
+            console.error("Auto-index failed:", e);
+            set((s) => ({
+              indexingIds: new Set([...s.indexingIds].filter((id) => id !== d.id)),
+            }));
+          }
+        }
+      } catch { /* parse failed, keep original doc */ }
     }
   },
 

@@ -106,6 +106,7 @@ pub fn run() {
             python_service::start_python_backend,
             python_service::stop_python_backend,
             python_service::get_python_backend_status,
+            claude_config::get_mcp_config_json,
             claude_config::configure_claude_mcp,
         ])
         .run(tauri::generate_context!())

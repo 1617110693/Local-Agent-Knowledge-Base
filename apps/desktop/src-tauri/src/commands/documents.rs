@@ -4,12 +4,18 @@ use crate::AppState;
 use std::path::Path;
 use tauri::State;
 
+#[derive(Debug, serde::Serialize)]
+pub struct UploadResult {
+    pub document: Document,
+    pub parts: Vec<Document>,
+}
+
 #[tauri::command]
 pub async fn upload_document(
     state: State<'_, AppState>,
     kb_id: String,
     file_path: String,
-) -> CommandResult<Document> {
+) -> CommandResult<UploadResult> {
     let path = Path::new(&file_path);
 
     // Validate file exists
@@ -60,7 +66,54 @@ pub async fn upload_document(
         .join(format!("original.{}", extension));
     std::fs::copy(path, &dest_path)?;
 
-    Ok(doc)
+    // For PDFs: check if splitting is needed (Precise mode: ≤200 pages, ≤200MB)
+    let mut parts = Vec::new();
+    if extension == "pdf" {
+        let port = *state.python_port.lock().unwrap();
+        let client = reqwest::Client::new();
+        let split_url = format!("http://127.0.0.1:{}/api/v1/utils/split-pdf", port);
+        if let Ok(resp) = client
+            .post(&split_url)
+            .json(&serde_json::json!({
+                "file_path": dest_path.to_string_lossy(),
+                "max_pages": 200,
+                "max_size_mb": 200,
+            }))
+            .timeout(std::time::Duration::from_secs(30))
+            .send()
+            .await
+        {
+            if let Ok(result) = resp.json::<serde_json::Value>().await {
+                if result["split"].as_bool().unwrap_or(false) {
+                    if let Some(part_paths) = result["parts"].as_array() {
+                        for part_path in part_paths.iter().skip(1) {
+                            if let Some(p) = part_path.as_str() {
+                                let part_name = Path::new(p)
+                                    .file_name()
+                                    .and_then(|n| n.to_str())
+                                    .unwrap_or("part.pdf")
+                                    .to_string();
+                                let part_size = std::fs::metadata(p).map(|m| m.len()).unwrap_or(0);
+                                if let Ok(part_doc) = state.file_store.add_document(
+                                    &kb_id, part_name, "pdf".to_string(), part_size,
+                                ) {
+                                    let part_dest = state
+                                        .file_store
+                                        .get_doc_dir(&kb_id, &part_doc.id)
+                                        .join("original.pdf");
+                                    if std::fs::copy(p, &part_dest).is_ok() {
+                                        parts.push(part_doc);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(UploadResult { document: doc, parts })
 }
 
 #[tauri::command]

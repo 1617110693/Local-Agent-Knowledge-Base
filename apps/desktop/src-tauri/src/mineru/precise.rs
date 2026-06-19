@@ -46,6 +46,9 @@ async fn request_upload_urls(
     client: &Client,
     file_name: &str,
 ) -> Result<(String, String), AppError> {
+    let is_html = file_name.to_lowercase().ends_with(".html") || file_name.to_lowercase().ends_with(".htm");
+    let model = if is_html { "MinerU-HTML" } else { "vlm" };
+
     let body = serde_json::json!({
         "files": [
             {
@@ -53,7 +56,7 @@ async fn request_upload_urls(
                 "data_id": format!("parse-{}", uuid::Uuid::new_v4())
             }
         ],
-        "model_version": "vlm"
+        "model_version": model
     });
 
     let resp = client

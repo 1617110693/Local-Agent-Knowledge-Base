@@ -10,50 +10,44 @@ use std::time::Duration;
 /// Python backend process handle
 pub struct PythonProcess(pub Mutex<Option<Child>>);
 
-impl Drop for PythonProcess {
-    fn drop(&mut self) {
-        if let Ok(mut guard) = self.0.lock() {
-            if let Some(ref mut child) = *guard {
-                // Try graceful kill first
-                let _ = child.kill();
-                let _ = child.wait();
-            }
-        }
-        // Force-kill any remaining knowledge-backend processes (Windows)
-        #[cfg(target_os = "windows")]
-        {
-            let _ = std::process::Command::new("taskkill")
-                .args(["/F", "/IM", "knowledge-backend.exe"])
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
-                .spawn();
-        }
-        #[cfg(not(target_os = "windows"))]
-        {
-            let _ = std::process::Command::new("pkill")
-                .args(["-f", "knowledge-backend"])
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
-                .spawn();
-        }
-    }
-}
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
 
-/// Explicitly kill the Python backend (call from app cleanup)
-pub fn force_kill_backend() {
+fn kill_backend_processes() {
     #[cfg(target_os = "windows")]
     {
         let _ = std::process::Command::new("taskkill")
             .args(["/F", "/IM", "knowledge-backend.exe"])
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
-            .output();
+            .creation_flags(CREATE_NO_WINDOW)
+            .spawn();
     }
     #[cfg(not(target_os = "windows"))]
     {
         let _ = std::process::Command::new("pkill")
             .args(["-9", "-f", "knowledge-backend"])
-            .output();
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn();
+    }
+}
+
+impl Drop for PythonProcess {
+    fn drop(&mut self) {
+        if let Ok(mut guard) = self.0.lock() {
+            if let Some(ref mut child) = *guard {
+                let _ = child.kill();
+                let _ = child.wait();
+            }
+        }
+        kill_backend_processes();
+    }
+}
+
+/// Explicitly kill the Python backend (call from app cleanup)
+pub fn force_kill_backend() {
+    kill_backend_processes();
     }
 }
 
@@ -149,6 +143,10 @@ pub async fn start_python_backend(
             .env("KNOWLEDGE_BACKEND_PORT", port.to_string())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
+        #[cfg(target_os = "windows")]
+        {
+            child.creation_flags(CREATE_NO_WINDOW);
+        }
 
         let child = child.spawn().map_err(|e| {
             AppError::PythonBackend(format!(
