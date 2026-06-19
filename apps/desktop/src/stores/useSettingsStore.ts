@@ -8,11 +8,12 @@ interface SettingsState {
   loading: boolean;
   pythonRunning: boolean;
   pythonUrl: string;
+  pythonError: string | null;
 
   loadSettings: () => Promise<void>;
   saveSettings: (settings: AppSettings) => Promise<void>;
   startPython: () => Promise<void>;
-  checkPythonStatus: () => Promise<void>;
+  checkPythonStatus: () => Promise<boolean>;
 }
 
 export const useSettingsStore = create<SettingsState>((set, get) => ({
@@ -20,6 +21,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   loading: false,
   pythonRunning: false,
   pythonUrl: "",
+  pythonError: null,
 
   loadSettings: async () => {
     set({ loading: true });
@@ -39,18 +41,28 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   startPython: async () => {
     try {
       const status = await tauriBridge.startPythonBackend();
-      set({ pythonRunning: status.running, pythonUrl: status.url });
+      set({
+        pythonRunning: status.running,
+        pythonUrl: status.url,
+        pythonError: status.error || null,
+      });
     } catch (e) {
-      console.error("Failed to start Python backend:", e);
+      set({ pythonRunning: false, pythonError: String(e) });
     }
   },
 
   checkPythonStatus: async () => {
     try {
       const status = await tauriBridge.getPythonBackendStatus();
-      set({ pythonRunning: status.running, pythonUrl: status.url });
+      set({
+        pythonRunning: status.running,
+        pythonUrl: status.url,
+        pythonError: status.error || null,
+      });
+      return status.running;
     } catch {
       set({ pythonRunning: false });
+      return false;
     }
   },
 }));

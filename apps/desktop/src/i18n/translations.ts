@@ -1,0 +1,111 @@
+export type Lang = "en" | "zh-CN";
+
+export const translations = {
+  "app.title": { en: "Local Knowledge Base", "zh-CN": "本地知识库" },
+  "app.backendReady": { en: "Backend Ready", "zh-CN": "后端就绪" },
+  "app.backendOffline": { en: "Backend Offline", "zh-CN": "后端离线" },
+
+  // Sidebar
+  "nav.knowledgeBases": { en: "Knowledge Bases", "zh-CN": "知识库" },
+  "nav.currentKB": { en: "Current KB", "zh-CN": "当前知识库" },
+  "nav.overview": { en: "Overview", "zh-CN": "概览" },
+  "nav.documents": { en: "Documents", "zh-CN": "文档" },
+  "nav.search": { en: "Search", "zh-CN": "搜索" },
+  "nav.chat": { en: "Chat", "zh-CN": "对话" },
+  "nav.system": { en: "System", "zh-CN": "系统" },
+  "nav.settings": { en: "Settings", "zh-CN": "设置" },
+  "nav.knowledgeBaseCount": { en: "{count} knowledge base(s)", "zh-CN": "{count} 个知识库" },
+
+  // Dashboard
+  "kb.dashboard": { en: "Knowledge Bases", "zh-CN": "知识库" },
+  "kb.desc": { en: "Manage your document collections and their indexes", "zh-CN": "管理你的文档集合及其索引" },
+  "kb.new": { en: "New Knowledge Base", "zh-CN": "新建知识库" },
+  "kb.create": { en: "Create Knowledge Base", "zh-CN": "创建知识库" },
+  "kb.name": { en: "Name", "zh-CN": "名称" },
+  "kb.description": { en: "Description (optional)", "zh-CN": "描述（选填）" },
+  "kb.createBtn": { en: "Create", "zh-CN": "创建" },
+  "kb.cancel": { en: "Cancel", "zh-CN": "取消" },
+  "kb.empty": { en: "No knowledge bases yet", "zh-CN": "还没有知识库" },
+  "kb.emptyHint": { en: "Create one to start uploading documents", "zh-CN": "创建一个知识库以开始上传文档" },
+  "kb.deleteConfirm": { en: "Delete this knowledge base? All documents and indexes will be removed.", "zh-CN": "删除此知识库？所有文档和索引将被移除。" },
+  "kb.docs": { en: "docs", "zh-CN": "个文档" },
+  "kb.chunks": { en: "chunks", "zh-CN": "个分块" },
+
+  // KB Overview
+  "overview.title": { en: "Overview", "zh-CN": "知识库概览" },
+  "overview.documents": { en: "Documents", "zh-CN": "文档" },
+  "overview.chunks": { en: "Chunks", "zh-CN": "分块" },
+  "overview.created": { en: "Created", "zh-CN": "创建于" },
+  "overview.updated": { en: "Updated", "zh-CN": "更新于" },
+  "overview.manageDocs": { en: "Manage Documents", "zh-CN": "管理文档" },
+  "overview.manageDocsDesc": { en: "Upload, parse, and index documents", "zh-CN": "上传、解析并索引文档" },
+  "overview.search": { en: "Search", "zh-CN": "搜索" },
+  "overview.searchDesc": { en: "Find content in this knowledge base", "zh-CN": "在此知识库中查找内容" },
+  "overview.chat": { en: "Chat", "zh-CN": "对话" },
+  "overview.chatDesc": { en: "Ask questions about your documents", "zh-CN": "向文档提问" },
+  "overview.notFound": { en: "Knowledge base not found", "zh-CN": "未找到知识库" },
+
+  // Documents
+  "docs.title": { en: "Documents", "zh-CN": "文档" },
+  "docs.desc": { en: "Upload and manage documents in this knowledge base", "zh-CN": "上传并管理此知识库中的文档" },
+  "docs.upload": { en: "Upload Document", "zh-CN": "上传文档" },
+  "docs.empty": { en: "No documents yet", "zh-CN": "还没有文档" },
+  "docs.emptyHint": { en: "Upload PDF, DOCX, PPTX, XLSX, images, or HTML files", "zh-CN": "上传 PDF、DOCX、PPTX、XLSX、图片或 HTML 文件" },
+  "docs.index": { en: "Index", "zh-CN": "索引" },
+  "docs.indexing": { en: "Indexing...", "zh-CN": "索引中…" },
+  "docs.preview": { en: "Preview", "zh-CN": "预览" },
+  "docs.delete": { en: "Delete", "zh-CN": "删除" },
+  "docs.uploadFilter": { en: "Documents", "zh-CN": "文档文件" },
+
+  // Parse status
+  "parse.pending": { en: "pending", "zh-CN": "等待中" },
+  "parse.parsing": { en: "parsing", "zh-CN": "解析中" },
+  "parse.done": { en: "done", "zh-CN": "已完成" },
+  "parse.failed": { en: "failed", "zh-CN": "失败" },
+
+  // Search
+  "search.title": { en: "Search", "zh-CN": "搜索" },
+  "search.placeholder": { en: "Search your knowledge base...", "zh-CN": "搜索你的知识库…" },
+  "search.searchBtn": { en: "Search", "zh-CN": "搜索" },
+  "search.hybrid": { en: "Hybrid Search", "zh-CN": "混合搜索" },
+  "search.vector": { en: "Vector (Semantic)", "zh-CN": "向量搜索（语义）" },
+  "search.fts": { en: "Keyword (FTS)", "zh-CN": "关键词搜索" },
+  "search.rerank": { en: "Rerank results", "zh-CN": "重排序结果" },
+  "search.results": { en: "{count} results in {time}ms", "zh-CN": "找到 {count} 条结果，用时 {time}ms" },
+  "search.page": { en: "Page", "zh-CN": "第" },
+
+  // Chat
+  "chat.title": { en: "RAG Chat", "zh-CN": "RAG 对话" },
+  "chat.clear": { en: "Clear", "zh-CN": "清空" },
+  "chat.placeholder": { en: "Ask a question about your documents...", "zh-CN": "向文档提问…" },
+  "chat.empty": { en: "Ask questions about your documents", "zh-CN": "向你的文档提问" },
+  "chat.sources": { en: "Sources", "zh-CN": "来源" },
+
+  // Settings
+  "settings.title": { en: "Settings", "zh-CN": "设置" },
+  "settings.save": { en: "Save Settings", "zh-CN": "保存设置" },
+  "settings.saved": { en: "Saved", "zh-CN": "已保存" },
+  "settings.mineru": { en: "MinerU Document Parsing", "zh-CN": "MinerU 文档解析" },
+  "settings.mineruToken": { en: "MinerU Token", "zh-CN": "MinerU 令牌" },
+  "settings.mineruHint": { en: "Get your token from MinerU API Management", "zh-CN": "从 MinerU API 管理页面获取令牌" },
+  "settings.embedding": { en: "Embedding Model (OpenAI-compatible)", "zh-CN": "Embedding 模型（OpenAI 兼容）" },
+  "settings.rerank": { en: "Rerank Model (OpenAI-compatible)", "zh-CN": "Rerank 模型（OpenAI 兼容）" },
+  "settings.llm": { en: "LLM for Chat (OpenAI-compatible)", "zh-CN": "对话 LLM（OpenAI 兼容）" },
+  "settings.chunking": { en: "Chunking Configuration", "zh-CN": "分块配置" },
+  "settings.strategy": { en: "Strategy", "zh-CN": "策略" },
+  "settings.chunkSize": { en: "Chunk Size", "zh-CN": "分块大小" },
+  "settings.chunkOverlap": { en: "Chunk Overlap", "zh-CN": "分块重叠" },
+  "settings.recursive": { en: "Recursive (recommended)", "zh-CN": "递归分块（推荐）" },
+  "settings.semantic": { en: "Semantic (sentence boundary)", "zh-CN": "语义分块（按句子边界）" },
+  "settings.fixed": { en: "Fixed Size", "zh-CN": "定长分块" },
+  "settings.python": { en: "Python Backend", "zh-CN": "Python 后端" },
+  "settings.running": { en: "Running", "zh-CN": "运行中" },
+  "settings.stopped": { en: "Stopped", "zh-CN": "已停止" },
+  "settings.startBackend": { en: "Start Backend", "zh-CN": "启动后端" },
+  "settings.port": { en: "Port", "zh-CN": "端口" },
+  "settings.apiBase": { en: "API Base URL", "zh-CN": "API 地址" },
+  "settings.apiKey": { en: "API Key", "zh-CN": "API 密钥" },
+  "settings.model": { en: "Model", "zh-CN": "模型" },
+} as const;
+
+export type TranslationKey = keyof typeof translations;

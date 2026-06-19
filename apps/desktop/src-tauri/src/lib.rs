@@ -49,6 +49,7 @@ pub fn run() {
                 file_store,
                 python_port: Mutex::new(port),
             });
+            app.manage(python_service::PythonProcess(Mutex::new(None)));
 
             Ok(())
         })

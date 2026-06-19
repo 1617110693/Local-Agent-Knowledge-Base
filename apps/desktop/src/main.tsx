@@ -5,6 +5,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import App from "./App";
 import "./styles/globals.css";
 
+// Disable browser right-click context menu in the webview
+document.addEventListener("contextmenu", (e) => e.preventDefault());
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {

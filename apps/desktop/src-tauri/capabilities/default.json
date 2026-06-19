@@ -5,22 +5,16 @@
   "windows": ["main"],
   "permissions": [
     "core:default",
-    "shell:allow-open",
-    "shell:allow-execute",
     "shell:allow-spawn",
-    "dialog:default",
+    "shell:allow-open",
     "dialog:allow-open",
     "dialog:allow-save",
     "fs:default",
-    "fs:allow-read",
-    "fs:allow-write",
-    "fs:allow-exists",
-    "fs:allow-mkdir",
-    "fs:allow-remove",
-    "fs:allow-rename",
-    "fs:allow-read-dir",
-    "fs:scope-app-data-recursive",
-    "fs:scope-app-config-recursive",
-    "store:default"
+    "store:default",
+    "core:window:allow-minimize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-close",
+    "core:window:allow-start-dragging",
+    "core:window:allow-set-title-bar-style"
   ]
 }

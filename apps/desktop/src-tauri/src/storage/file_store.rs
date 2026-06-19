@@ -1,7 +1,7 @@
 use crate::error::{AppError, CommandResult};
 use crate::models::{Document, KnowledgeBase, KnowledgeBaseRegistry, ParseStatus};
 use chrono::Utc;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use uuid::Uuid;
 
 /// Manages local file storage for knowledge bases

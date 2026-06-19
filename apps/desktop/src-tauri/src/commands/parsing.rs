@@ -3,7 +3,6 @@ use crate::mineru::{self, ParseMode};
 use crate::models::{ParseStatus, ParseTask};
 use crate::AppState;
 use tauri::State;
-use std::path::PathBuf;
 
 #[tauri::command]
 pub async fn start_parsing(

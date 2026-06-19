@@ -1,58 +1,11 @@
 use crate::error::AppError;
 use reqwest::Client;
-use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::time::Duration;
 use tokio::time::sleep;
 
-const MINERU_PRECISE_API: &str = "https://mineru.net/api/v4/extract/task";
 const POLL_INTERVAL_SECS: u64 = 3;
 const MAX_POLL_ATTEMPTS: u32 = 200; // Max 10 minutes
-
-#[derive(Debug, Serialize)]
-struct CreateTaskRequest {
-    url: String,
-    model_version: String,
-    is_ocr: bool,
-    enable_formula: bool,
-    enable_table: bool,
-    language: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct CreateTaskResponse {
-    code: i32,
-    msg: String,
-    data: Option<CreateTaskData>,
-}
-
-#[derive(Debug, Deserialize)]
-struct CreateTaskData {
-    task_id: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct TaskStatusResponse {
-    code: i32,
-    msg: String,
-    data: Option<TaskStatusData>,
-}
-
-#[derive(Debug, Deserialize)]
-struct TaskStatusData {
-    task_id: String,
-    state: String,
-    full_zip_url: Option<String>,
-    err_msg: Option<String>,
-    extract_progress: Option<ExtractProgress>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ExtractProgress {
-    extracted_pages: u32,
-    total_pages: u32,
-    start_time: String,
-}
 
 /// Parse a document using MinerU's Precise API (v4/extract/task).
 /// This mode requires a token and supports files up to 200MB / 200 pages.

@@ -96,6 +96,7 @@ export async function startPythonBackend(): Promise<{
   running: boolean;
   url: string;
   port: number;
+  error: string | null;
 }> {
   return invoke("start_python_backend");
 }
@@ -108,6 +109,7 @@ export async function getPythonBackendStatus(): Promise<{
   running: boolean;
   url: string;
   port: number;
+  error: string | null;
 }> {
   return invoke("get_python_backend_status");
 }
