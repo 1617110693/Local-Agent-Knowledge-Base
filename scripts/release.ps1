@@ -35,7 +35,7 @@ Push-Location $Root\apps\mcp-server; uv sync; Pop-Location
 # 3. Build Python backend into standalone exe (PyInstaller)
 Write-Host "`n[3/5] Building knowledge-backend.exe..." -ForegroundColor Yellow
 Push-Location $Root\services\python-backend
-uv run pyinstaller --onefile --console --name knowledge-backend build_backend.py
+uv run pyinstaller --onefile --noconsole --name knowledge-backend build_backend.py
 $backendExe = "$Root\services\python-backend\dist\knowledge-backend.exe"
 if (-not (Test-Path $backendExe)) {
     Write-Warning "PyInstaller backend build failed, falling back to uv run at runtime"
@@ -45,7 +45,7 @@ Pop-Location
 # 4. Build MCP server into standalone exe (PyInstaller)
 Write-Host "`n[4/5] Building local-kb-mcp.exe..." -ForegroundColor Yellow
 Push-Location $Root\apps\mcp-server
-uv run pyinstaller --onefile --console --name local-kb-mcp build_mcp.py
+uv run pyinstaller --onefile --noconsole --name local-kb-mcp build_mcp.py
 $mcpExe = "$Root\apps\mcp-server\dist\local-kb-mcp.exe"
 if (-not (Test-Path $mcpExe)) {
     Write-Warning "PyInstaller MCP build failed, users can use uvx from source"

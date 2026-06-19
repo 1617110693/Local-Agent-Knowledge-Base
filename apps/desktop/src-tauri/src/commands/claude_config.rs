@@ -97,18 +97,12 @@ fn build_config(
     command: &str,
     args: &[String],
     data_dir: &str,
-    settings: &crate::models::settings::AppSettings,
+    _settings: &crate::models::settings::AppSettings,
 ) -> CommandResult<ConfigureResult> {
     let mut entry = serde_json::json!({
         "command": command,
         "env": {
             "KNOWLEDGE_BASE_DATA_DIR": data_dir,
-            "EMBEDDING_API_BASE": &settings.embedding_api_base,
-            "EMBEDDING_API_KEY": &settings.embedding_api_key,
-            "EMBEDDING_MODEL": &settings.embedding_model,
-            "RERANK_API_BASE": &settings.rerank_api_base,
-            "RERANK_API_KEY": &settings.rerank_api_key,
-            "RERANK_MODEL": &settings.rerank_model,
         }
     });
     if !args.is_empty() {

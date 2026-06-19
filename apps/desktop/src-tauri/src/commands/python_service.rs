@@ -34,7 +34,14 @@ fn resolve_backend_command() -> (String, Vec<String>) {
     // Try bundled sidecar first (production) — skip 0-byte dev placeholders
     if let Ok(exe) = std::env::current_exe() {
         if let Some(dir) = exe.parent() {
-            for name in &["knowledge-backend.exe", "knowledge-backend"] {
+            // Production sidecars may include target triple suffix
+            for name in &[
+                "knowledge-backend.exe",
+                "knowledge-backend",
+                "knowledge-backend-x86_64-pc-windows-msvc.exe",
+                "knowledge-backend-aarch64-apple-darwin",
+                "knowledge-backend-x86_64-unknown-linux-gnu",
+            ] {
                 let sidecar = dir.join(name);
                 if sidecar.exists() {
                     if let Ok(meta) = std::fs::metadata(&sidecar) {

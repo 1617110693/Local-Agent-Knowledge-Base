@@ -9,14 +9,10 @@ Usage:
     uvx --from . local-kb-mcp               # From local dir
     uvx --from git+https://... local-kb-mcp # From repo
 
-Configuration via environment variables:
+Configuration:
     KNOWLEDGE_BASE_DATA_DIR  — Path to app data directory (required)
-    EMBEDDING_API_BASE       — OpenAI-compatible embedding API base URL
-    EMBEDDING_API_KEY        — Embedding API key
-    EMBEDDING_MODEL          — Embedding model name
-    RERANK_API_BASE          — Rerank API base URL
-    RERANK_API_KEY           — Rerank API key
-    RERANK_MODEL             — Rerank model name
+                              API keys are read from settings.json in this directory.
+                              Environment variables can override individual values.
 """
 
 import json
@@ -32,23 +28,43 @@ from .lancedb_client import LanceDBSearcher
 
 DATA_DIR = os.environ.get("KNOWLEDGE_BASE_DATA_DIR", "")
 if not DATA_DIR:
-    # Default: ~/.local-knowledge-base
     default_dir = Path.home() / ".local-knowledge-base"
     if default_dir.exists():
         DATA_DIR = str(default_dir)
     else:
-        DATA_DIR = str(default_dir)  # Use anyway; will be created by the desktop app
+        DATA_DIR = str(default_dir)
 
-EMBEDDING_API_BASE = os.environ.get(
-    "EMBEDDING_API_BASE", "https://api.openai.com/v1"
+
+def _load_settings() -> dict:
+    """Load API settings from settings.json in the data directory."""
+    settings_path = Path(DATA_DIR) / "settings.json"
+    if settings_path.exists():
+        try:
+            with open(settings_path) as f:
+                return json.load(f)
+        except (json.JSONDecodeError, OSError):
+            pass
+    return {}
+
+
+_settings = _load_settings()
+
+# Env vars take precedence over settings.json values
+EMBEDDING_API_BASE = os.environ.get("EMBEDDING_API_BASE") or _settings.get(
+    "embedding_api_base", "https://api.openai.com/v1"
 )
-EMBEDDING_API_KEY = os.environ.get("EMBEDDING_API_KEY", "")
-EMBEDDING_MODEL = os.environ.get("EMBEDDING_MODEL", "text-embedding-3-small")
-RERANK_API_BASE = os.environ.get("RERANK_API_BASE", "https://api.jina.ai/v1")
-RERANK_API_KEY = os.environ.get("RERANK_API_KEY", "")
-RERANK_MODEL = os.environ.get(
-    "RERANK_MODEL", "jina-reranker-v2-base-multilingual"
+EMBEDDING_API_KEY = os.environ.get("EMBEDDING_API_KEY") or _settings.get("embedding_api_key", "")
+EMBEDDING_MODEL = os.environ.get("EMBEDDING_MODEL") or _settings.get(
+    "embedding_model", "text-embedding-3-small"
 )
+RERANK_API_BASE = os.environ.get("RERANK_API_BASE") or _settings.get(
+    "rerank_api_base", "https://api.jina.ai/v1"
+)
+RERANK_API_KEY = os.environ.get("RERANK_API_KEY") or _settings.get("rerank_api_key", "")
+RERANK_MODEL = os.environ.get("RERANK_MODEL") or _settings.get(
+    "rerank_model", "jina-reranker-v2-base-multilingual"
+)
+
 # ── MCP Server ──
 
 mcp = FastMCP(name="Local Knowledge Base")

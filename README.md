@@ -13,11 +13,13 @@ A local-first desktop knowledge base application designed for AI agent integrati
 ### 📄 Document Management
 - **Multi-format support**: PDF, DOCX, PPTX, XLSX, images (PNG/JPG/WebP), HTML, **Markdown (.md)**, plain text (.txt)
 - **Drag & drop upload** with file type validation
+- **Auto-parse + auto-index pipeline**: upload → parse → index is fully automatic
+- **Markdown & plain text** files are indexed instantly without MinerU
 - **MinerU integration** for high-quality document parsing:
   - 🎯 **Precise mode** (v4 extract/task): Token auth, ≤200MB, ≤200 pages, tables/formulas
   - ⚡ **Agent mode** (v1 agent/parse): No auth, ≤10MB, ≤20 pages, for AI workflows
 - **Markdown preview** of parsed documents
-- **Parse status tracking** with progress indicators
+- **Parse & index progress** tracking with real-time status indicators
 
 ### 🔍 Knowledge Management
 - **Multiple knowledge bases** with independent indexes
@@ -30,7 +32,7 @@ A local-first desktop knowledge base application designed for AI agent integrati
 
 ### 🤖 AI Model Integration (OpenAI-compatible)
 - **Embedding**: OpenAI, Azure, Ollama, vLLM, LiteLLM, LM Studio, or any `/v1/embeddings` endpoint
-- **Rerank**: Jina AI, Cohere, or any `/v1/rerank` or `/rerank` endpoint
+- **Rerank**: Jina AI, Cohere, DashScope (Qwen3-rerank), or any compatible endpoint
 - **100% provider-agnostic** — you control the models
 
 ### 🔌 MCP Server (Model Context Protocol)
@@ -39,7 +41,7 @@ A local-first desktop knowledge base application designed for AI agent integrati
   - `list_knowledge_bases` — List all KBs with stats
   - `get_document` — Full document retrieval
 - **stdio transport** — runs as a subprocess
-- **`uvx` compatible** — one-command launch
+- **`uv run`** — zero-config launch
 - **No dependency** on the desktop app — reads LanceDB directly
 - Designed for **Claude Code**, but works with any MCP client
 - LLM-powered Q&A is handled by the agent itself (e.g. Claude Code) using the search results
@@ -135,9 +137,8 @@ npm run tauri dev
    - **Rerank API** (optional): Jina AI or Cohere
    - **MinerU Token** (optional): For high-quality parsing of large documents
 3. Create a **Knowledge Base**
-4. **Upload documents** — the app auto-parses using MinerU (agent mode if no token, precise mode with token)
-5. Click **Index** on parsed documents to generate embeddings and store in LanceDB
-6. **Search** your knowledge base, or connect Claude Code via the MCP server for AI-powered Q&A
+4. **Upload documents** — auto-parsed and auto-indexed; markdown files are instant
+5. **Search** your knowledge base, or connect Claude Code via the MCP server for AI-powered Q&A
 
 ---
 
@@ -193,7 +194,12 @@ Rerank:    https://api.cohere.com/v1  |  rerank-english-v3.0
 
 **ZhipuAI / BigModel**
 ```
-Embedding: https://open.bigmodel.cn/api/paas/v4  |  embedding-2
+Embedding: https://open.bigmodel.cn/api/paas/v4  |  embedding-3
+```
+
+**DashScope (rerank)**
+```
+Rerank:    https://dashscope.aliyuncs.com/compatible-mode/v1  |  qwen3-rerank
 ```
 
 > 💡 The base URL should include the API version prefix (e.g. `/v1`, `/v4`, `/api`). The app appends `/embeddings` or `/rerank` to it. For Ollama, use `http://localhost:11434/api`.
@@ -216,7 +222,9 @@ The MCP server enables AI agents (especially **Claude Code**) to search and quer
 
 ### Configuration for Claude Code
 
-Add to your `claude_desktop_config.json` or `.claude/settings.json`:
+The MCP server reads API keys from `settings.json` in the data directory — you only need to tell it where that is.
+
+**Development** (`uv run` from source):
 
 ```json
 {
@@ -230,45 +238,29 @@ Add to your `claude_desktop_config.json` or `.claude/settings.json`:
         "local-kb-mcp"
       ],
       "env": {
-        "KNOWLEDGE_BASE_DATA_DIR": "$HOME/.local-knowledge-base",
-        "EMBEDDING_API_BASE": "https://api.openai.com/v1",
-        "EMBEDDING_API_KEY": "sk-your-key-here",
-        "EMBEDDING_MODEL": "text-embedding-3-small",
-        "RERANK_API_BASE": "https://api.jina.ai/v1",
-        "RERANK_API_KEY": "jina-your-key-here",
-        "RERANK_MODEL": "jina-reranker-v2-base-multilingual"
+        "KNOWLEDGE_BASE_DATA_DIR": "$HOME/.local-knowledge-base"
       }
     }
   }
 }
 ```
 
-> 💡 Replace `$HOME/.local-knowledge-base` with your actual data directory path.
-
-### Using `uvx` from a Git Repository
-
-Once the project is published to GitHub:
+**Production** (bundled sidecar):
 
 ```json
 {
   "mcpServers": {
     "local-knowledge-base": {
-      "command": "uvx",
-      "args": [
-        "--from",
-        "git+https://github.com/your-username/local-knowledge-base#subdirectory=apps/mcp-server",
-        "local-kb-mcp"
-      ],
+      "command": "C:\\Program Files\\Local Knowledge Base\\local-kb-mcp.exe",
       "env": {
-        "KNOWLEDGE_BASE_DATA_DIR": "$HOME/.local-knowledge-base",
-        "EMBEDDING_API_BASE": "https://api.openai.com/v1",
-        "EMBEDDING_API_KEY": "sk-...",
-        "EMBEDDING_MODEL": "text-embedding-3-small"
+        "KNOWLEDGE_BASE_DATA_DIR": "C:\\Users\\...\\.local-knowledge-base"
       }
     }
   }
 }
 ```
+
+> 💡 API keys are configured in the desktop app Settings UI and stored in `settings.json`. You don't need to duplicate them in the MCP config.
 
 ### Available MCP Tools
 
@@ -330,9 +322,6 @@ uv run local-kb-mcp
 
 # Production (from installed package)
 local-kb-mcp
-
-# From Git (one-shot)
-uvx --from git+https://github.com/your-username/local-knowledge-base#subdirectory=apps/mcp-server local-kb-mcp
 ```
 
 ---
@@ -450,7 +439,7 @@ Installed App/
 3. Configure API keys in Settings
 4. Start uploading documents
 
-**For Claude Code MCP integration**, the user points to the installed `local-kb-mcp.exe`:
+**Claude Code MCP integration** — just point to the installed exe with the data directory:
 
 ```json
 {
@@ -458,10 +447,7 @@ Installed App/
     "local-knowledge-base": {
       "command": "C:\\Program Files\\Local Knowledge Base\\local-kb-mcp.exe",
       "env": {
-        "KNOWLEDGE_BASE_DATA_DIR": "C:\\Users\\...\\.local-knowledge-base",
-        "EMBEDDING_API_BASE": "https://api.openai.com/v1",
-        "EMBEDDING_API_KEY": "sk-...",
-        "EMBEDDING_MODEL": "text-embedding-3-small"
+        "KNOWLEDGE_BASE_DATA_DIR": "C:\\Users\\...\\.local-knowledge-base"
       }
     }
   }
