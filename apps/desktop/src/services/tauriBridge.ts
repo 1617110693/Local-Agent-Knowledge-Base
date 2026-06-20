@@ -55,6 +55,26 @@ export async function getKB(kbId: string): Promise<KnowledgeBase> {
   return invoke("get_kb", { kbId });
 }
 
+export async function togglePinKB(kbId: string): Promise<KnowledgeBase[]> {
+  return invoke("toggle_pin_kb", { kbId });
+}
+
+export async function reorderKBs(orderedIds: string[]): Promise<KnowledgeBase[]> {
+  return invoke("reorder_kbs", { orderedIds });
+}
+
+export async function clearAllKBs(): Promise<number> {
+  return invoke("clear_all_kbs");
+}
+
+export async function exportKBs(kbIds: string[], outputPath: string): Promise<string> {
+  return invoke("export_kbs", { kbIds, outputPath });
+}
+
+export async function importKBs(zipPath: string): Promise<number> {
+  return invoke("import_kbs", { zipPath });
+}
+
 // ── Documents ──
 
 export async function uploadDocument(

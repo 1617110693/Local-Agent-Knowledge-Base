@@ -599,24 +599,35 @@ def _sync_doc_to_desktop(
             {doc_id}/
               metadata.json   ← Document struct as JSON
               full.md         ← parsed markdown
+              original.{ext}  ← original file (for "Open file location")
 
     Also updates ``knowledge_bases.json`` so the KB list stays in sync.
     """
     from datetime import datetime, timezone
+    import shutil
 
     now = datetime.now(timezone.utc).isoformat()
     kb_dir = Path(DATA_DIR) / f"kb_{kb_id}"
     doc_dir = kb_dir / "docs" / doc_id
     doc_dir.mkdir(parents=True, exist_ok=True)
 
-    # Determine file_type and file_size from the original file
+    # Determine file_type and file_size
     ext = Path(file_path).suffix.lstrip(".") if file_path else "txt"
+    original_path = doc_dir / f"original.{ext}" if ext else None
+
     file_size = 0
     if file_path:
         try:
             file_size = Path(file_path).stat().st_size
+            # Copy original file so "Open file location" works
+            if original_path and not original_path.exists():
+                shutil.copy2(file_path, original_path)
         except OSError:
             pass
+
+    if file_size == 0 and content:
+        # Fall back to content byte length for text-mode imports
+        file_size = len(content.encode("utf-8"))
 
     # Load/create metadata.json
     meta_path = doc_dir / "metadata.json"
@@ -653,6 +664,17 @@ def _sync_doc_to_desktop(
     full_md = doc_dir / "full.md"
     if not full_md.exists():
         full_md.write_text(content, encoding="utf-8")
+    # Update file_size from full.md if still 0
+    if file_size == 0 and full_md.exists():
+        try:
+            file_size = full_md.stat().st_size
+            doc_meta["file_size"] = file_size
+            meta_path.write_text(
+                json.dumps(doc_meta, indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
+        except OSError:
+            pass
 
     # Update knowledge_bases.json to reflect document count
     _update_kb_registry(kb_id, chunk_count)

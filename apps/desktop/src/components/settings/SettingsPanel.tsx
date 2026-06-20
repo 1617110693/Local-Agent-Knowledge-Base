@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import { useSettingsStore } from "../../stores/useSettingsStore";
+import { useKBStore } from "../../stores/useKBStore";
 import { useI18n } from "../../i18n";
-import { configureClaudeMCP, getMcpConfigJson } from "../../services/tauriBridge";
+import { configureClaudeMCP, getMcpConfigJson, clearAllKBs, exportKBs, importKBs } from "../../services/tauriBridge";
 import { testEmbedding, testRerank } from "../../services/pythonClient";
 import type { AppSettings } from "../../types";
-import { Save, CheckCircle, Loader2, Terminal, Check, X, FolderOpen, FlaskConical, Copy, ClipboardCheck } from "lucide-react";
+import { Save, CheckCircle, Loader2, Terminal, Check, X, FolderOpen, FlaskConical, Copy, ClipboardCheck, AlertTriangle, Trash2, Download, Upload } from "lucide-react";
+import { ConfirmDialog } from "../common/ConfirmDialog";
 
 export function SettingsPanel() {
   const { t } = useI18n();
@@ -14,6 +16,97 @@ export function SettingsPanel() {
   const [claudeStatus, setClaudeStatus] = useState<{ success: boolean; message: string } | null>(null);
   const [configuring, setConfiguring] = useState(false);
   const [copiedMCP, setCopiedMCP] = useState(false);
+  const [showClearDialog, setShowClearDialog] = useState(false);
+  const [clearing, setClearing] = useState(false);
+  const [clearResult, setClearResult] = useState<string | null>(null);
+
+  const handleClearAll = async () => {
+    setClearing(true);
+    try {
+      const count = await clearAllKBs();
+      setClearResult(`Cleared ${count} knowledge base(s).`);
+      setShowClearDialog(false);
+      setTimeout(() => setClearResult(null), 4000);
+    } catch (e) {
+      setClearResult(`Error: ${e}`);
+      setShowClearDialog(false);
+      setTimeout(() => setClearResult(null), 4000);
+    }
+    setClearing(false);
+  };
+
+  // ── Export / Import ──
+  const { knowledgeBases, loadKBs } = useKBStore();
+  const [selectedKBs, setSelectedKBs] = useState<Set<string>>(new Set());
+  const [exporting, setExporting] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [dataResult, setDataResult] = useState<string | null>(null);
+
+  useEffect(() => { loadKBs(); }, []);
+
+  const toggleSelect = (id: string) => {
+    setSelectedKBs(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const selectAll = () => setSelectedKBs(new Set(knowledgeBases.map(k => k.id)));
+  const deselectAll = () => setSelectedKBs(new Set());
+
+  const handleExport = async () => {
+    if (selectedKBs.size === 0) return;
+    setExporting(true);
+    try {
+      const { save } = await import("@tauri-apps/plugin-dialog");
+      // Generate filename: single KB uses its name, multiple uses count + date
+      let defaultName: string;
+      if (selectedKBs.size === 1) {
+        const kb = knowledgeBases.find(k => k.id === [...selectedKBs][0]);
+        const safeName = (kb?.name || "knowledge-base").replace(/[\\/:*?"<>|]/g, "-");
+        defaultName = `${safeName}.zip`;
+      } else {
+        const date = new Date().toISOString().slice(0, 10);
+        defaultName = `knowledge-bases-${selectedKBs.size}-${date}.zip`;
+      }
+      const path = await save({
+        filters: [{ name: "ZIP Archive", extensions: ["zip"] }],
+        defaultPath: defaultName,
+      });
+      if (path) {
+        await exportKBs([...selectedKBs], path);
+        setDataResult(`Exported ${selectedKBs.size} knowledge base(s).`);
+        setTimeout(() => setDataResult(null), 4000);
+      }
+    } catch (e) {
+      setDataResult(`Export error: ${e}`);
+      setTimeout(() => setDataResult(null), 4000);
+    }
+    setExporting(false);
+  };
+
+  const handleImport = async () => {
+    setImporting(true);
+    try {
+      const { open } = await import("@tauri-apps/plugin-dialog");
+      const selected = await open({
+        filters: [{ name: "ZIP Archive", extensions: ["zip"] }],
+        multiple: false,
+      });
+      if (selected) {
+        const path = selected as string;
+        const count = await importKBs(path);
+        await loadKBs();
+        setDataResult(`Imported ${count} knowledge base(s).`);
+        setTimeout(() => setDataResult(null), 4000);
+      }
+    } catch (e) {
+      setDataResult(`Import error: ${e}`);
+      setTimeout(() => setDataResult(null), 4000);
+    }
+    setImporting(false);
+  };
 
   const handleCopyMCPConfig = async () => {
     try {
@@ -42,7 +135,7 @@ export function SettingsPanel() {
     setForm((p) => ({ ...p, [field]: value }));
 
   return (
-    <div className="p-6 max-w-2xl mx-auto">
+    <div className="p-6 max-w-2xl mx-auto space-y-6">
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-2xl font-bold">{t("settings.title")}</h2>
         <button onClick={handleSave}
@@ -291,6 +384,86 @@ export function SettingsPanel() {
           </div>
         )}
       </section>
+
+      {/* Export / Import */}
+      <section className="p-6 bg-card border rounded-xl space-y-4">
+        <div className="flex items-center gap-2">
+          <Download className="w-5 h-5 text-primary" />
+          <h2 className="font-semibold">{t("settings.export")}</h2>
+        </div>
+        <p className="text-sm text-muted-foreground">{t("settings.exportDesc")}</p>
+        {knowledgeBases.length > 0 && (
+          <>
+            <div className="flex gap-2">
+              <button onClick={selectAll} className="text-xs text-muted-foreground hover:text-foreground underline">{t("settings.selectAll")}</button>
+              <button onClick={deselectAll} className="text-xs text-muted-foreground hover:text-foreground underline">{t("settings.deselectAll")}</button>
+            </div>
+            <div className="max-h-48 overflow-y-auto space-y-0.5 border rounded-md p-2">
+              {knowledgeBases.map(kb => (
+                <label key={kb.id} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-muted/50 rounded px-2 py-1">
+                  <input type="checkbox" checked={selectedKBs.has(kb.id)} onChange={() => toggleSelect(kb.id)} className="rounded" />
+                  <span className="truncate">{kb.name}</span>
+                  <span className="text-xs text-muted-foreground ml-auto shrink-0">{kb.document_count}</span>
+                </label>
+              ))}
+            </div>
+          </>
+        )}
+        <button onClick={handleExport} disabled={exporting || selectedKBs.size === 0}
+          className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50">
+          <Download className="w-4 h-4" />
+          {exporting ? t("settings.exporting") : `${t("settings.exportBtn")} (${selectedKBs.size})`}
+        </button>
+      </section>
+
+      <section className="p-6 bg-card border rounded-xl space-y-4">
+        <div className="flex items-center gap-2">
+          <Upload className="w-5 h-5 text-primary" />
+          <h2 className="font-semibold">{t("settings.import")}</h2>
+        </div>
+        <p className="text-sm text-muted-foreground">{t("settings.importDesc")}</p>
+        <button onClick={handleImport} disabled={importing}
+          className="flex items-center gap-2 px-4 py-2 border rounded-lg text-sm font-medium hover:bg-muted transition-colors disabled:opacity-50">
+          <Upload className="w-4 h-4" />
+          {importing ? t("settings.importing") : t("settings.importBtn")}
+        </button>
+      </section>
+
+      {dataResult && (
+        <p className="text-sm text-muted-foreground text-center">{dataResult}</p>
+      )}
+
+      {/* Clear All Knowledge Bases — dangerous */}
+      <section className="p-6 bg-card border rounded-xl space-y-4">
+        <div className="flex items-center gap-2">
+          <AlertTriangle className="w-5 h-5 text-red-500" />
+          <h2 className="font-semibold">{t("settings.clearAll")}</h2>
+        </div>
+        <p className="text-sm text-muted-foreground">{t("settings.clearAllDesc")}</p>
+        <button
+          onClick={() => setShowClearDialog(true)}
+          disabled={clearing}
+          className="flex items-center gap-2 px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+        >
+          <Trash2 className="w-4 h-4" />
+          {clearing ? t("settings.clearing") : t("settings.clearAllBtn")}
+        </button>
+        {clearResult && (
+          <p className="text-sm text-muted-foreground">{clearResult}</p>
+        )}
+      </section>
+
+      <ConfirmDialog
+        open={showClearDialog}
+        title={t("settings.clearAll")}
+        message={t("settings.clearAllConfirm")}
+        confirmLabel={t("settings.clearAllConfirmBtn")}
+        cancelLabel={t("kb.cancel")}
+        danger={true}
+        onConfirm={handleClearAll}
+        onCancel={() => setShowClearDialog(false)}
+      />
+
     </div>
   );
 }

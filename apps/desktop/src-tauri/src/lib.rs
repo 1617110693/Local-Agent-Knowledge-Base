@@ -90,6 +90,11 @@ pub fn run() {
             knowledge_base::delete_kb,
             knowledge_base::list_kbs,
             knowledge_base::get_kb,
+            knowledge_base::toggle_pin_kb,
+            knowledge_base::reorder_kbs,
+            knowledge_base::clear_all_kbs,
+            knowledge_base::export_kbs,
+            knowledge_base::import_kbs,
             // Document commands
             documents::upload_document,
             documents::delete_document,

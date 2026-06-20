@@ -1,20 +1,21 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
 import { useKBStore } from "../../stores/useKBStore";
 import { useSettingsStore } from "../../stores/useSettingsStore";
 import { useI18n } from "../../i18n";
-import { BookOpen, Settings, FolderOpen, AlertCircle, X, Layers } from "lucide-react";
+import { BookOpen, Settings, FolderOpen, AlertCircle, X, Layers, Pin } from "lucide-react";
 
 export function Sidebar() {
   const location = useLocation();
   const { kbId } = useParams();
-  const { knowledgeBases, loadKBs } = useKBStore();
+  const { knowledgeBases, loadKBs, getSortedKBs, sortMode } = useKBStore();
   const { pythonRunning, pythonError } = useSettingsStore();
   const { t } = useI18n();
   const [showError, setShowError] = useState(false);
 
   useEffect(() => { loadKBs(); }, []);
   const isActive = (path: string) => location.pathname === path || location.pathname.startsWith(path + "/");
+  const sortedKBs = useMemo(() => getSortedKBs(), [knowledgeBases, sortMode]);
 
   return (
     <>
@@ -60,17 +61,18 @@ export function Sidebar() {
           </Link>
 
           {/* KB list — indented under "知识库" */}
-          {knowledgeBases.length > 0 && (
+          {sortedKBs.length > 0 && (
             <div className="ml-4 border-l border-border/50 pl-2 space-y-0.5 mt-0.5">
-              {knowledgeBases.map((kb) => (
+              {sortedKBs.map((kb) => (
                 <Link
                   key={kb.id}
                   to={`/kb/${kb.id}`}
-                  className={`flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors ${
+                  title={kb.description || undefined}
+                  className={`flex items-center gap-1.5 px-2 py-1.5 rounded-md text-sm transition-colors ${
                     kbId === kb.id ? "bg-primary/10 text-primary font-medium" : "hover:bg-muted text-muted-foreground"
                   }`}
                 >
-                  <Layers className="w-3 h-3 shrink-0" />
+                  {kb.pinned ? <Pin className="w-2.5 h-2.5 text-amber-500 shrink-0" /> : <Layers className="w-3 h-3 shrink-0" />}
                   <span className="truncate">{kb.name}</span>
                   <span className="text-[10px] text-muted-foreground/60 ml-auto shrink-0">{kb.document_count}</span>
                 </Link>

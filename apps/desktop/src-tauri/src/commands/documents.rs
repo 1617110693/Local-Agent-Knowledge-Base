@@ -166,32 +166,46 @@ pub async fn reveal_document_in_explorer(
     let doc_dir = state.file_store.get_doc_dir(&kb_id, &doc_id);
     let original_path = doc_dir.join(format!("original.{}", doc.file_type));
 
-    if !original_path.exists() {
-        return Err(AppError::NotFound(format!(
-            "Original file not found: {}",
-            original_path.display()
-        )));
-    }
+    // Use the original file if it exists, otherwise fall back to the doc directory itself
+    let target = if original_path.exists() {
+        original_path
+    } else {
+        doc_dir
+    };
 
-    let path_str = original_path.to_string_lossy().to_string();
+    let path_str = target.to_string_lossy().to_string();
 
     #[cfg(target_os = "windows")]
     {
-        std::process::Command::new("explorer")
-            .args(["/select,", &path_str])
-            .spawn()
-            .map_err(|e| AppError::PythonBackend(format!("Failed to open explorer: {}", e)))?;
+        if target.is_dir() {
+            std::process::Command::new("explorer")
+                .arg(&path_str)
+                .spawn()
+                .map_err(|e| AppError::PythonBackend(format!("Failed to open explorer: {}", e)))?;
+        } else {
+            std::process::Command::new("explorer")
+                .args(["/select,", &path_str])
+                .spawn()
+                .map_err(|e| AppError::PythonBackend(format!("Failed to open explorer: {}", e)))?;
+        }
     }
     #[cfg(target_os = "macos")]
     {
-        std::process::Command::new("open")
-            .args(["-R", &path_str])
-            .spawn()
-            .map_err(|e| AppError::PythonBackend(format!("Failed to open Finder: {}", e)))?;
+        if target.is_dir() {
+            std::process::Command::new("open")
+                .arg(&path_str)
+                .spawn()
+                .map_err(|e| AppError::PythonBackend(format!("Failed to open Finder: {}", e)))?;
+        } else {
+            std::process::Command::new("open")
+                .args(["-R", &path_str])
+                .spawn()
+                .map_err(|e| AppError::PythonBackend(format!("Failed to open Finder: {}", e)))?;
+        }
     }
     #[cfg(target_os = "linux")]
     {
-        let parent = original_path.parent().map(|p| p.to_string_lossy().to_string()).unwrap_or(path_str.clone());
+        let parent = target.parent().map(|p| p.to_string_lossy().to_string()).unwrap_or(path_str.clone());
         std::process::Command::new("xdg-open")
             .arg(&parent)
             .spawn()

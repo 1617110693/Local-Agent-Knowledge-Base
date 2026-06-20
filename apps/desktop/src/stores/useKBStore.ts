@@ -2,6 +2,9 @@ import { create } from "zustand";
 import type { KnowledgeBase, Document } from "../types";
 import * as tauriBridge from "../services/tauriBridge";
 
+export type ViewMode = "card" | "compact" | "grid";
+export type SortMode = "manual" | "name-asc" | "name-desc" | "date-asc" | "date-desc";
+
 interface KBState {
   knowledgeBases: KnowledgeBase[];
   activeKB: KnowledgeBase | null;
@@ -9,6 +12,8 @@ interface KBState {
   loading: boolean;
   error: string | null;
   indexingIds: Set<string>;
+  viewMode: ViewMode;
+  sortMode: SortMode;
 
   loadKBs: () => Promise<void>;
   loadDocuments: (kbId: string) => Promise<void>;
@@ -22,6 +27,11 @@ interface KBState {
   refreshDocument: (kbId: string, docId: string) => Promise<void>;
   reindexDocument: (kbId: string, docId: string, docName: string) => Promise<void>;
   reindexAll: (kbId: string) => Promise<void>;
+  togglePinKB: (kbId: string) => Promise<void>;
+  reorderKBs: (orderedIds: string[]) => Promise<void>;
+  setViewMode: (mode: ViewMode) => void;
+  setSortMode: (mode: SortMode) => void;
+  getSortedKBs: () => KnowledgeBase[];
 }
 
 export const useKBStore = create<KBState>((set, get) => ({
@@ -31,6 +41,8 @@ export const useKBStore = create<KBState>((set, get) => ({
   loading: false,
   error: null,
   indexingIds: new Set(),
+  viewMode: (localStorage.getItem("kbViewMode") as ViewMode) || "card",
+  sortMode: (localStorage.getItem("kbSortMode") as SortMode) || "manual",
 
   loadKBs: async () => {
     set({ loading: true, error: null });
@@ -215,5 +227,57 @@ export const useKBStore = create<KBState>((set, get) => ({
         await get().reindexDocument(kbId, doc.id, doc.name);
       }
     }
+  },
+
+  togglePinKB: async (kbId: string) => {
+    const kbs = await tauriBridge.togglePinKB(kbId);
+    set({ knowledgeBases: kbs });
+  },
+
+  reorderKBs: async (orderedIds: string[]) => {
+    // Optimistic update
+    const prevKBs = get().knowledgeBases;
+    const reordered = orderedIds.map(id => prevKBs.find(k => k.id === id)!).filter(Boolean);
+    set({ knowledgeBases: reordered });
+    // Persist
+    const kbs = await tauriBridge.reorderKBs(orderedIds);
+    set({ knowledgeBases: kbs });
+  },
+
+  setViewMode: (mode: ViewMode) => {
+    localStorage.setItem("kbViewMode", mode);
+    set({ viewMode: mode });
+  },
+
+  setSortMode: (mode: SortMode) => {
+    localStorage.setItem("kbSortMode", mode);
+    set({ sortMode: mode });
+  },
+
+  getSortedKBs: () => {
+    const { knowledgeBases, sortMode } = get();
+    // Split into pinned / unpinned groups; pinned always comes first
+    const pinned = knowledgeBases.filter(k => k.pinned);
+    const unpinned = knowledgeBases.filter(k => !k.pinned);
+
+    const sortFn = (a: KnowledgeBase, b: KnowledgeBase): number => {
+      switch (sortMode) {
+        case "name-asc":
+          return a.name.localeCompare(b.name);
+        case "name-desc":
+          return b.name.localeCompare(a.name);
+        case "date-asc":
+          return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+        case "date-desc":
+          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+        case "manual":
+        default:
+          return 0; // preserve registry order
+      }
+    };
+
+    const sortedPinned = [...pinned].sort(sortFn);
+    const sortedUnpinned = [...unpinned].sort(sortFn);
+    return [...sortedPinned, ...sortedUnpinned];
   },
 }));

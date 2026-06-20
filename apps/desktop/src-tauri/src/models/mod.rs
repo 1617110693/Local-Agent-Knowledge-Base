@@ -15,6 +15,8 @@ pub struct KnowledgeBase {
     pub chunk_count: u32,
     pub embedding_model: String,
     pub embedding_dim: u32,
+    #[serde(default)]
+    pub pinned: bool,
 }
 
 /// Document metadata

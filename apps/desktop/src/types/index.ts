@@ -10,6 +10,7 @@ export interface KnowledgeBase {
   chunk_count: number;
   embedding_model: string;
   embedding_dim: number;
+  pinned: boolean;
 }
 
 export interface Document {

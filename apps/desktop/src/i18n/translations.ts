@@ -2,8 +2,8 @@ export type Lang = "en" | "zh-CN";
 
 export const translations = {
   "app.title": { en: "Local Knowledge Base", "zh-CN": "本地知识库" },
-  "app.backendReady": { en: "Backend Ready", "zh-CN": "后端就绪" },
-  "app.backendOffline": { en: "Backend Offline", "zh-CN": "后端离线" },
+  "app.backendReady": { en: "Ready", "zh-CN": "就绪" },
+  "app.backendOffline": { en: "Offline", "zh-CN": "离线" },
   "app.viewError": { en: "View error details", "zh-CN": "查看错误详情" },
   "app.backendError": { en: "Backend Error", "zh-CN": "后端错误" },
 
@@ -52,7 +52,7 @@ export const translations = {
   "docs.desc": { en: "Upload and manage documents in this knowledge base", "zh-CN": "上传并管理此知识库中的文档" },
   "docs.upload": { en: "Upload Document", "zh-CN": "上传文档" },
   "docs.empty": { en: "No documents yet", "zh-CN": "还没有文档" },
-  "docs.emptyHint": { en: "Drop files here or click to upload", "zh-CN": "拖拽文件到此处或点击上传" },
+  "docs.emptyHint": { en: "Click to upload documents", "zh-CN": "点击上传文档" },
   "docs.uploading": { en: "Processing...", "zh-CN": "处理中…" },
   "docs.loadingHint": { en: "Loading documents...", "zh-CN": "正在加载文档列表…" },
   "docs.parsingHint": { en: "Uploading and parsing...", "zh-CN": "正在上传并解析…" },
@@ -134,6 +134,37 @@ export const translations = {
   "settings.claudeMCPDesc": { en: "Auto-configure the MCP server for Claude Code. This writes the config to ~/.claude.json so Claude Code can search your knowledge bases.", "zh-CN": "一键配置 Claude Code 的 MCP Server。将配置写入 ~/.claude.json，Claude Code 即可搜索你的知识库。" },
   "settings.configureClaude": { en: "Configure Claude Code MCP", "zh-CN": "一键配置 Claude Code MCP" },
   "settings.copyMCPConfig": { en: "Copy MCP Config", "zh-CN": "复制 MCP 配置" },
+
+  // Dashboard view modes & sorting
+  "kb.viewCard": { en: "Card view", "zh-CN": "卡片视图" },
+  "kb.viewCompact": { en: "Compact view", "zh-CN": "紧凑视图" },
+  "kb.viewGrid": { en: "Grid view", "zh-CN": "网格视图" },
+  "kb.sortManual": { en: "Default", "zh-CN": "默认" },
+  "kb.sortDefault": { en: "Default", "zh-CN": "默认" },
+  "kb.sortNameAsc": { en: "Name ▲", "zh-CN": "名称 ▲" },
+  "kb.sortNameDesc": { en: "Name ▼", "zh-CN": "名称 ▼" },
+  "kb.sortDateAsc": { en: "Oldest first", "zh-CN": "最早优先" },
+  "kb.sortDateDesc": { en: "Newest first", "zh-CN": "最新优先" },
+  "kb.pin": { en: "Pin to top", "zh-CN": "置顶" },
+  "kb.unpin": { en: "Unpin", "zh-CN": "取消置顶" },
+
+  // Settings — data management
+  "settings.clearAll": { en: "Clear All Knowledge Bases", "zh-CN": "清空所有知识库" },
+  "settings.clearAllDesc": { en: "This will permanently delete ALL knowledge bases, documents, and vector indexes. This action cannot be undone.", "zh-CN": "这将永久删除所有知识库、文档和向量索引。此操作不可撤销。" },
+  "settings.clearAllBtn": { en: "Clear All Knowledge Bases", "zh-CN": "清空所有知识库" },
+  "settings.clearAllConfirm": { en: "Are you sure you want to delete ALL knowledge bases? All documents, chunks, and vector indexes will be permanently removed.", "zh-CN": "确定要删除所有知识库吗？所有文档、分块和向量索引将被永久移除。" },
+  "settings.clearAllConfirmBtn": { en: "Yes, Delete Everything", "zh-CN": "是，全部删除" },
+  "settings.clearing": { en: "Clearing...", "zh-CN": "正在清除..." },
+  "settings.export": { en: "Export Knowledge Bases", "zh-CN": "导出知识库" },
+  "settings.exportDesc": { en: "Select knowledge bases and export them as a ZIP file for backup.", "zh-CN": "选择知识库并导出为 ZIP 文件进行备份。" },
+  "settings.exportBtn": { en: "Export Selected", "zh-CN": "导出所选" },
+  "settings.exporting": { en: "Exporting...", "zh-CN": "正在导出..." },
+  "settings.import": { en: "Import Knowledge Bases", "zh-CN": "导入知识库" },
+  "settings.importDesc": { en: "Import knowledge bases from a previously exported ZIP file.", "zh-CN": "从之前导出的 ZIP 文件导入知识库。" },
+  "settings.importBtn": { en: "Import from ZIP", "zh-CN": "从 ZIP 导入" },
+  "settings.importing": { en: "Importing...", "zh-CN": "正在导入..." },
+  "settings.selectAll": { en: "Select All", "zh-CN": "全选" },
+  "settings.deselectAll": { en: "Deselect All", "zh-CN": "取消全选" },
 } as const;
 
 export type TranslationKey = keyof typeof translations;

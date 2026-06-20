@@ -53,6 +53,7 @@ impl FileStore {
             chunk_count: 0,
             embedding_model: String::new(),
             embedding_dim: 0,
+            pinned: false,
         };
 
         // Create KB directory
@@ -110,6 +111,7 @@ impl FileStore {
             chunk_count: source.chunk_count,
             embedding_model: source.embedding_model.clone(),
             embedding_dim: source.embedding_dim,
+            pinned: false,
         };
 
         let mut registry = self.load_registry()?;
@@ -149,6 +151,174 @@ impl FileStore {
         Ok(())
     }
 
+    pub fn clear_all_kbs(&self) -> CommandResult<u32> {
+        let registry = self.load_registry()?;
+        let count = registry.knowledge_bases.len() as u32;
+
+        for kb in &registry.knowledge_bases {
+            // Delete KB document directory
+            let kb_dir = self.root_dir.join(format!("kb_{}", kb.id));
+            if kb_dir.exists() {
+                std::fs::remove_dir_all(&kb_dir)?;
+            }
+            // Delete LanceDB vector table
+            let lance_table = self
+                .root_dir
+                .join("lancedb_data")
+                .join(format!("kb_{}.lance", kb.id.replace('-', "_")));
+            if lance_table.exists() {
+                std::fs::remove_dir_all(&lance_table)?;
+            }
+        }
+
+        // Wipe registry
+        self.save_registry(&KnowledgeBaseRegistry::default())?;
+
+        Ok(count)
+    }
+
+    pub fn export_kbs(&self, kb_ids: &[String], output_path: &str) -> CommandResult<String> {
+        use std::io::Write;
+        let registry = self.load_registry()?;
+
+        let selected: Vec<&KnowledgeBase> = registry
+            .knowledge_bases
+            .iter()
+            .filter(|kb| kb_ids.contains(&kb.id))
+            .collect();
+
+        if selected.is_empty() {
+            return Err(AppError::InvalidInput("No knowledge bases selected".into()));
+        }
+
+        let file = std::fs::File::create(output_path)?;
+        let mut zip = zip::ZipWriter::new(file);
+        let options = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated);
+
+        // Export selected KB registry subset
+        let export_registry = crate::models::KnowledgeBaseRegistry {
+            version: 1,
+            knowledge_bases: selected.iter().map(|k| (*k).clone()).collect(),
+        };
+        let reg_json = serde_json::to_string_pretty(&export_registry)?;
+        zip.start_file("knowledge_bases.json", options)?;
+        zip.write_all(reg_json.as_bytes())?;
+
+        let root = self.root_dir.clone();
+        fn add_dir(
+            zip: &mut zip::ZipWriter<std::fs::File>,
+            dir: &std::path::Path,
+            root: &std::path::Path,
+            options: zip::write::SimpleFileOptions,
+        ) -> Result<(), Box<dyn std::error::Error>> {
+            if !dir.exists() { return Ok(()); }
+            for entry in std::fs::read_dir(dir)? {
+                let entry = entry?;
+                let path = entry.path();
+                if path.is_file() {
+                    let rel = path.strip_prefix(root)
+                        .unwrap_or(&path)
+                        .to_string_lossy()
+                        .replace('\\', "/");
+                    zip.start_file(&rel, options)?;
+                    std::io::copy(&mut std::fs::File::open(&path)?, zip)?;
+                } else if path.is_dir() {
+                    add_dir(zip, &path, root, options)?;
+                }
+            }
+            Ok(())
+        }
+
+        for kb in &selected {
+            let kb_dir = root.join(format!("kb_{}", kb.id));
+            add_dir(&mut zip, &kb_dir, &root, options)?;
+
+            let lance_table = root
+                .join("lancedb_data")
+                .join(format!("kb_{}.lance", kb.id.replace('-', "_")));
+            add_dir(&mut zip, &lance_table, &root, options)?;
+        }
+
+        zip.finish()?;
+        Ok(output_path.to_string())
+    }
+
+    pub fn import_kbs(&self, zip_path: &str) -> CommandResult<u32> {
+        let file = std::fs::File::open(zip_path)?;
+        let mut archive = zip::ZipArchive::new(file)?;
+
+        // First, read the manifest
+        let mut export_registry: Option<crate::models::KnowledgeBaseRegistry> = None;
+        for i in 0..archive.len() {
+            let entry = archive.by_index(i)?;
+            if entry.name() == "knowledge_bases.json" {
+                let data = std::io::read_to_string(entry)?;
+                export_registry = Some(serde_json::from_str(&data)?);
+                break;
+            }
+        }
+
+        let export_registry = export_registry
+            .ok_or_else(|| AppError::InvalidInput("ZIP missing knowledge_bases.json".into()))?;
+
+        // Generate new IDs to avoid conflicts
+        let mut id_map: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+        let mut new_kbs = Vec::new();
+        for kb in &export_registry.knowledge_bases {
+            let new_id = uuid::Uuid::new_v4().to_string();
+            id_map.insert(kb.id.clone(), new_id.clone());
+            let mut new_kb = kb.clone();
+            new_kb.id = new_id;
+            new_kbs.push(new_kb);
+        }
+
+        // Extract files, remapping paths with new IDs
+        for i in 0..archive.len() {
+            let mut entry = archive.by_index(i)?;
+            let name = entry.name().to_string();
+            if name == "knowledge_bases.json" {
+                continue;
+            }
+
+            let mut out_path = self.root_dir.clone();
+            // Remap kb directory names
+            let mut resolved = name.clone();
+            for (old_id, new_id) in &id_map {
+                let old_kb_dir = format!("kb_{}", old_id);
+                let new_kb_dir = format!("kb_{}", new_id);
+                if resolved.starts_with(&old_kb_dir) {
+                    resolved = resolved.replacen(&old_kb_dir, &new_kb_dir, 1);
+                }
+                // Also remap LanceDB table names
+                let old_lance = format!("lancedb_data/kb_{}.lance", old_id.replace('-', "_"));
+                let new_lance = format!("lancedb_data/kb_{}.lance", new_id.replace('-', "_"));
+                if resolved.starts_with(&old_lance) {
+                    resolved = resolved.replacen(&old_lance, &new_lance, 1);
+                }
+            }
+            out_path.push(&resolved);
+
+            if entry.is_dir() {
+                std::fs::create_dir_all(&out_path)?;
+            } else {
+                if let Some(parent) = out_path.parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
+                let mut outfile = std::fs::File::create(&out_path)?;
+                std::io::copy(&mut entry, &mut outfile)?;
+            }
+        }
+
+        // Merge into registry
+        let mut registry = self.load_registry()?;
+        let count = new_kbs.len() as u32;
+        registry.knowledge_bases.extend(new_kbs);
+        self.save_registry(&registry)?;
+
+        Ok(count)
+    }
+
     pub fn list_kbs(&self) -> CommandResult<Vec<KnowledgeBase>> {
         let registry = self.load_registry()?;
         Ok(registry.knowledge_bases)
@@ -162,6 +332,60 @@ impl FileStore {
             .find(|kb| kb.id == kb_id)
             .cloned()
             .ok_or_else(|| AppError::NotFound(format!("Knowledge base not found: {}", kb_id)))
+    }
+
+    pub fn toggle_pin_kb(&self, kb_id: &str) -> CommandResult<Vec<KnowledgeBase>> {
+        let mut registry = self.load_registry()?;
+
+        // Toggle pinned flag
+        let mut target_pinned = false;
+        for kb in &mut registry.knowledge_bases {
+            if kb.id == kb_id {
+                kb.pinned = !kb.pinned;
+                target_pinned = kb.pinned;
+                break;
+            }
+        }
+
+        // Re-sort: pinned KBs first, then unpinned (preserving relative order within each group)
+        let mut kbs = std::mem::take(&mut registry.knowledge_bases);
+        if target_pinned {
+            // Move the toggled KB to just after the last already-pinned KB
+            if let Some(pos) = kbs.iter().position(|k| k.id == kb_id) {
+                let kb = kbs.remove(pos);
+                let insert_pos = kbs.iter().position(|k| !k.pinned).unwrap_or(kbs.len());
+                kbs.insert(insert_pos, kb);
+            }
+        } else {
+            // Move unpinned KB to just after the pinned group
+            if let Some(pos) = kbs.iter().position(|k| k.id == kb_id) {
+                let kb = kbs.remove(pos);
+                let insert_pos = kbs.iter().position(|k| !k.pinned).unwrap_or(kbs.len());
+                kbs.insert(insert_pos, kb);
+            }
+        }
+        registry.knowledge_bases = kbs;
+
+        self.save_registry(&registry)?;
+        Ok(registry.knowledge_bases.clone())
+    }
+
+    pub fn reorder_kbs(&self, ordered_ids: &[String]) -> CommandResult<Vec<KnowledgeBase>> {
+        let mut registry = self.load_registry()?;
+        let mut old_kbs = std::mem::take(&mut registry.knowledge_bases);
+        let mut reordered = Vec::with_capacity(old_kbs.len());
+
+        for id in ordered_ids {
+            if let Some(pos) = old_kbs.iter().position(|k| k.id == *id) {
+                reordered.push(old_kbs.remove(pos));
+            }
+        }
+        // Append any KBs not in the ordered list (safety net)
+        reordered.extend(old_kbs);
+        registry.knowledge_bases = reordered;
+
+        self.save_registry(&registry)?;
+        Ok(registry.knowledge_bases.clone())
     }
 
     // ── Document Operations ──

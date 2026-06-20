@@ -49,5 +49,17 @@ impl From<reqwest::Error> for AppError {
     }
 }
 
+impl From<zip::result::ZipError> for AppError {
+    fn from(e: zip::result::ZipError) -> Self {
+        AppError::Io(e.to_string())
+    }
+}
+
+impl From<Box<dyn std::error::Error>> for AppError {
+    fn from(e: Box<dyn std::error::Error>) -> Self {
+        AppError::Internal(e.to_string())
+    }
+}
+
 // Tauri command error type
 pub type CommandResult<T> = Result<T, AppError>;

@@ -6,7 +6,7 @@ import { indexDocument } from "../../services/pythonClient";
 import {
   FileText, Layers, Upload, Trash2, Loader2,
   CheckCircle, XCircle, Clock, Eye, FolderOpen,
-  Search, Database, Pencil, RefreshCw, Check, FolderSearch, Copy,
+  Search, Database, Pencil, RefreshCw, Check, FolderSearch, Copy, X, ArrowLeft,
 } from "lucide-react";
 import type { Document } from "../../types";
 import { ConfirmDialog } from "../common/ConfirmDialog";
@@ -29,10 +29,12 @@ export function KBSettings() {
   const [indexing, setIndexing] = useState<Record<string, boolean>>({});
   const [loadingDocs, setLoadingDocs] = useState(true);
   const [deleteTarget, setDeleteTarget] = useState<{ docId: string; docName: string } | null>(null);
+  const [deleteKBTarget, setDeleteKBTarget] = useState(false);
 
   // ── Rename KB ──
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState("");
+  const [showDescDialog, setShowDescDialog] = useState(false);
 
   useEffect(() => { loadKBs(); }, []);
   useEffect(() => {
@@ -124,7 +126,7 @@ export function KBSettings() {
   const commitDesc = async () => {
     const newDesc = descDraft.trim();
     if (kbId && newDesc !== (kb?.description || "")) {
-      await updateKB(kbId, null, newDesc || null);
+      await updateKB(kbId, null, newDesc);
     }
     setEditingDesc(false);
   };
@@ -175,6 +177,14 @@ export function KBSettings() {
     }
   };
 
+  const handleDeleteKB = async () => {
+    if (kbId) {
+      await useKBStore.getState().deleteKB(kbId);
+      navigate("/");
+    }
+    setDeleteKBTarget(false);
+  };
+
   const handleReindexDoc = async (doc: Document) => {
     if (!kbId) return;
     await reindexDocument(kbId, doc.id, doc.name);
@@ -210,6 +220,13 @@ export function KBSettings() {
       {/* Header */}
       <div className="p-6 pb-4 border-b bg-card/50 shrink-0">
         <div className="flex items-center gap-4">
+          <button
+            onClick={() => navigate("/")}
+            className="p-1.5 hover:bg-muted rounded-lg text-muted-foreground hover:text-foreground transition-colors shrink-0"
+            title="Back to Dashboard"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </button>
           <FolderOpen className="w-10 h-10 text-primary shrink-0" />
           <div className="flex-1 min-w-0">
             {editingName ? (
@@ -227,7 +244,7 @@ export function KBSettings() {
                 </button>
               </div>
             ) : (
-              <h2 className="text-2xl font-bold truncate flex items-center gap-2">
+              <h2 className="text-2xl font-bold break-words flex items-center gap-2">
                 {kb.name}
                 <button onClick={startRename} className="p-1 hover:bg-muted rounded-md text-muted-foreground hover:text-foreground" title={t("kb.rename")}>
                   <Pencil className="w-4 h-4" />
@@ -235,27 +252,34 @@ export function KBSettings() {
               </h2>
             )}
             {editingDesc ? (
-              <div className="flex items-center gap-2 mt-1">
-                <input
+              <div className="flex items-start gap-2 mt-1">
+                <textarea
                   autoFocus
                   value={descDraft}
                   onChange={(e) => setDescDraft(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter") commitDesc(); if (e.key === "Escape") setEditingDesc(false); }}
+                  onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); commitDesc(); } if (e.key === "Escape") setEditingDesc(false); }}
                   onBlur={commitDesc}
                   placeholder={t("kb.description")}
-                  className="text-sm bg-background border rounded-lg px-2 py-1 w-full max-w-md outline-none ring-1 ring-primary"
+                  rows={2}
+                  className="text-sm bg-background border rounded-lg px-2 py-1 w-full max-w-md outline-none ring-1 ring-primary resize-none"
                 />
                 <button onClick={commitDesc} className="p-1 hover:bg-green-50 rounded-md text-green-600 shrink-0" title={t("kb.rename")}>
                   <Check className="w-3.5 h-3.5" />
                 </button>
               </div>
             ) : (
-              <p className="text-muted-foreground text-sm truncate flex items-center gap-1">
-                {kb.description || <span className="text-muted-foreground/40 italic">{t("kb.addDescription")}</span>}
-                <button onClick={startEditDesc} className="p-0.5 hover:bg-muted rounded text-muted-foreground hover:text-foreground" title={t("kb.editDescription")}>
+              <div className="flex items-start gap-1 mt-1 min-w-0">
+                <p
+                  onClick={() => kb.description && setShowDescDialog(true)}
+                  className={`text-muted-foreground text-sm line-clamp-5 break-words min-w-0 flex-1 ${kb.description ? "cursor-pointer hover:text-foreground/80" : ""}`}
+                  title={kb.description ? t("kb.editDescription") : undefined}
+                >
+                  {kb.description || <span className="text-muted-foreground/40 italic">{t("kb.addDescription")}</span>}
+                </p>
+                <button onClick={startEditDesc} className="p-0.5 hover:bg-muted rounded text-muted-foreground hover:text-foreground shrink-0" title={t("kb.editDescription")}>
                   <Pencil className="w-3 h-3" />
                 </button>
-              </p>
+              </div>
             )}
             {kb.embedding_model && (
               <p className="text-xs text-muted-foreground mt-0.5">
@@ -278,6 +302,18 @@ export function KBSettings() {
             <button
               onClick={async () => {
                 if (kbId) {
+                  await loadKBs();
+                  await loadDocuments(kbId);
+                }
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 border rounded-lg text-sm font-medium hover:bg-muted transition-colors text-muted-foreground"
+              title="Refresh"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={async () => {
+                if (kbId) {
                   await copyKB(kbId);
                 }
               }}
@@ -285,6 +321,13 @@ export function KBSettings() {
               title={t("kb.copy")}
             >
               <Copy className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => setDeleteKBTarget(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 border border-red-200 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50 transition-colors"
+              title={t("docs.delete")}
+            >
+              <Trash2 className="w-3.5 h-3.5" />
             </button>
             <button
               onClick={() => navigate(`/kb/${kbId}/search`)}
@@ -443,7 +486,7 @@ export function KBSettings() {
         )}
       </div>
 
-      {/* Delete confirm dialog */}
+      {/* Delete doc confirm dialog */}
       <ConfirmDialog
         open={deleteTarget !== null}
         title={t("docs.delete")}
@@ -453,6 +496,34 @@ export function KBSettings() {
         onConfirm={handleDeleteConfirm}
         onCancel={() => setDeleteTarget(null)}
       />
+
+      {/* Delete KB confirm dialog */}
+      <ConfirmDialog
+        open={deleteKBTarget}
+        title={t("kb.deleteConfirm")}
+        message={t("kb.deleteConfirm")}
+        confirmLabel={t("docs.delete")}
+        cancelLabel={t("kb.cancel")}
+        onConfirm={handleDeleteKB}
+        onCancel={() => setDeleteKBTarget(false)}
+      />
+
+      {/* Description reading dialog */}
+      {showDescDialog && kb?.description && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowDescDialog(false)}>
+          <div className="bg-card border rounded-xl shadow-xl max-w-lg w-full mx-4 max-h-[70vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-4 border-b shrink-0">
+              <h3 className="font-semibold">{kb.name}</h3>
+              <button onClick={() => setShowDescDialog(false)} className="p-1 hover:bg-muted rounded-md">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto flex-1">
+              <p className="text-sm text-muted-foreground whitespace-pre-wrap break-words">{kb.description}</p>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

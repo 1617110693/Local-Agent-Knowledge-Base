@@ -25,6 +25,9 @@ A local-first desktop knowledge base application designed for AI agent integrati
 ### 🔍 Knowledge Management
 - **Multiple knowledge bases** with independent indexes
 - **KB operations**: create, rename, edit description, copy (with LanceDB data), delete
+- **Display modes**: Card, Grid, or Compact list view — toggle in the toolbar
+- **Sorting**: by name (asc/desc), date (asc/desc), or default (registry order)
+- **Pin** frequently used KBs to the top — pinned KBs always appear first
 - **KB-level embedding model binding** — ensures index consistency; warns on mismatch
 - **One-click re-index** for individual documents or entire KB (with backup)
 - **Per-document re-index** button for model migration
@@ -59,10 +62,10 @@ A local-first desktop knowledge base application designed for AI agent integrati
 - **Dark/light/system theme** toggle (☀️/🌙/🖥️)
 - **English/Chinese** localization
 - **Sidebar** with KB list (scrollable) + Settings fixed at bottom
-- **KB workspace** with stats, document management, and search
-- **Document preview** with LaTeX math support
+- **KB workspace** with stats, document management, grid/list views, and search
+- **Document preview** with LaTeX math support and clickable long descriptions
 - **Search interface** with hybrid/vector/keyword modes and rerank model display
-- **Settings panel** with connection testing and MCP config generator
+- **Settings panel** with connection testing, MCP config generator, **export/import ZIP**, and **clear all**
 
 ---
 
