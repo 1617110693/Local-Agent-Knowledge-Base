@@ -659,6 +659,19 @@ impl FileStore {
         doc.embedding_model = embedding_model;
         doc.updated_at = Utc::now();
         self.save_document_meta(&doc)?;
+
+        // Recalculate KB total chunk count from all documents
+        let total_chunks: u32 = self.list_documents(kb_id)?
+            .iter()
+            .map(|d| d.chunk_count)
+            .sum();
+        let mut registry = self.load_registry()?;
+        if let Some(kb) = registry.knowledge_bases.iter_mut().find(|k| k.id == kb_id) {
+            kb.chunk_count = total_chunks;
+            kb.updated_at = Utc::now();
+        }
+        self.save_registry(&registry)?;
+
         Ok(doc)
     }
 

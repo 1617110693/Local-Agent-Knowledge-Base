@@ -195,3 +195,7 @@ export async function testRerank(params: {
     body: JSON.stringify(params),
   });
 }
+
+export async function cleanOrphans(): Promise<{ cleaned: number; details: string[] }> {
+  return pythonFetch("/utils/clean-orphans", { method: "POST" });
+}

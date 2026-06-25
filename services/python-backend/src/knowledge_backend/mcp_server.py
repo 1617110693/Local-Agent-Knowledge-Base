@@ -166,6 +166,38 @@ def list_knowledge_bases() -> list[dict]:
 
 
 @mcp.tool
+def list_documents(kb_id: str) -> list[dict]:
+    """List all documents in a knowledge base with metadata (name, type, size, chunks, etc.)."""
+    docs_dir = Path(DATA_DIR) / f"kb_{kb_id}" / "docs"
+    if not docs_dir.exists():
+        return []
+
+    results = []
+    for d in sorted(docs_dir.iterdir()):
+        if not d.is_dir():
+            continue
+        meta_path = d / "metadata.json"
+        if not meta_path.exists():
+            continue
+        try:
+            meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            results.append({
+                "doc_id": meta.get("id", d.name),
+                "name": meta.get("name", d.name),
+                "file_type": meta.get("file_type", ""),
+                "file_size": meta.get("file_size", 0),
+                "chunk_count": meta.get("chunk_count", 0),
+                "parse_status": meta.get("parse_status", "unknown"),
+                "path": meta.get("path"),
+                "created_at": meta.get("created_at", ""),
+                "updated_at": meta.get("updated_at", ""),
+            })
+        except (json.JSONDecodeError, OSError):
+            pass
+    return results
+
+
+@mcp.tool
 def get_document(kb_id: str, doc_id: str, include_chunks: bool = False) -> dict:
     """Get full document content with optional chunk details."""
     doc_dir = Path(DATA_DIR) / f"kb_{kb_id}" / "docs" / doc_id
@@ -585,6 +617,83 @@ def get_document_chunks(kb_id: str, doc_id: str) -> dict:
 
 
 # ── Entry Point ──
+
+@mcp.tool
+def clean_orphans() -> dict:
+    """Clean up orphaned data. Removes LanceDB tables not in the registry,
+    orphan documents (dirs without metadata.json), and stale .bak files."""
+    import shutil
+
+    db = _get_db()
+    registry_ids: set[str] = set()
+    registry_path = Path(DATA_DIR) / "knowledge_bases.json"
+    if registry_path.exists():
+        try:
+            data = json.loads(registry_path.read_text(encoding="utf-8"))
+            for kb in data.get("knowledge_bases", []):
+                registry_ids.add(kb["id"])
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    results: list[str] = []
+
+    # 1. Remove LanceDB tables not in registry
+    try:
+        lancedb_ids = db.list_kb_ids()
+        for lid in lancedb_ids:
+            if lid not in registry_ids:
+                db.drop_table(lid)
+                results.append(f"Removed orphan LanceDB table: {lid}")
+    finally:
+        db.close()
+
+    # 2. Remove orphan documents (dirs without metadata.json)
+    for kb_id in registry_ids:
+        docs_dir = Path(DATA_DIR) / f"kb_{kb_id}" / "docs"
+        if docs_dir.exists():
+            for d in docs_dir.iterdir():
+                if d.is_dir() and not (d / "metadata.json").exists():
+                    shutil.rmtree(d)
+                    results.append(f"Removed orphan document: {kb_id}/{d.name}")
+
+    # 3. Remove stale .bak files
+    lancedb_dir = Path(DATA_DIR) / "lancedb_data"
+    if lancedb_dir.exists():
+        for f in lancedb_dir.glob("*.bak"):
+            f.unlink()
+            results.append(f"Removed stale backup: {f.name}")
+        for f in lancedb_dir.glob("*.bak.*"):
+            f.unlink()
+            results.append(f"Removed stale backup: {f.name}")
+
+    # 4. Repair kb_id mismatches in chunks
+    db2 = _get_db()
+    try:
+        for kb_id in registry_ids:
+            table = db2.get_table(kb_id)
+            if table is None:
+                continue
+            try:
+                mismatched = table.search().where(f"kb_id != '{kb_id}'").limit(1).to_list()
+                if mismatched:
+                    all_wrong = table.search().where(f"kb_id != '{kb_id}'").limit(100000).to_list()
+                    if all_wrong:
+                        table.delete(f"kb_id != '{kb_id}'")
+                        for row in all_wrong:
+                            row["kb_id"] = kb_id
+                        table.add(all_wrong)
+                        results.append(f"Fixed {len(all_wrong)} chunks with wrong kb_id in KB: {kb_id}")
+            except Exception:
+                pass
+    finally:
+        db2.close()
+
+    # 5. Re-count chunks/docs for all KBs
+    for kb_id in registry_ids:
+        _update_kb_counts(kb_id)
+
+    return {"cleaned": len(results), "details": results}
+
 
 def main():
     """Entry point for the MCP stdio server."""

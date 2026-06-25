@@ -195,12 +195,11 @@ export const useKBStore = create<KBState>((set, get) => ({
         markdown_content: content.markdown,
       });
       await saveDocumentChunks(kbId, docId, result.chunk_count, result.embedding_model, result.embedding_dim);
+      // Reload KBs from registry to get updated chunk_count totals
+      await get().loadKBs();
       set((s) => ({
         documents: s.documents.map((d) =>
           d.id === docId ? { ...d, chunk_count: result.chunk_count, embedding_model: result.embedding_model } : d
-        ),
-        knowledgeBases: s.knowledgeBases.map((k) =>
-          k.id === kbId ? { ...k, embedding_model: result.embedding_model, embedding_dim: result.embedding_dim, chunk_count: k.chunk_count } : k
         ),
         indexingIds: new Set([...s.indexingIds].filter((id) => id !== docId)),
       }));

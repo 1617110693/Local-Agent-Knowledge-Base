@@ -55,10 +55,18 @@ export interface ChatRequest {
   stream?: boolean;
 }
 
+export interface ToolCall {
+  id: string;
+  function: { name: string; arguments: string };
+}
+
 export interface ChatMessage {
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "tool";
   content: string;
   sources?: SearchResult[];
+  tool_calls?: ToolCall[];
+  tool_call_id?: string;
+  name?: string;
 }
 
 export interface SearchResult {
@@ -111,6 +119,11 @@ export interface AppSettings {
   chunk_overlap: number;
   python_port: number;
   theme: "light" | "dark" | "system";
+  max_tool_rounds: number;
+  max_history_messages: number;
+  max_search_result_chars: number;
+  max_document_chars: number;
+  max_chunk_chars: number;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -130,4 +143,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   chunk_overlap: 50,
   python_port: 17390,
   theme: "system",
+  max_tool_rounds: 10,
+  max_history_messages: 80,
+  max_search_result_chars: 2000,
+  max_document_chars: 30000,
+  max_chunk_chars: 800,
 };

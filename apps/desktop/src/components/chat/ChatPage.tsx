@@ -4,25 +4,21 @@ import { useChatStore } from "../../stores/useChatStore";
 import { useKBStore } from "../../stores/useKBStore";
 import { useSettingsStore } from "../../stores/useSettingsStore";
 import { useI18n } from "../../i18n";
-import { searchAll } from "../../services/pythonClient";
-import { Send, Loader2, Trash2, MessageSquare, User, Bot, Layers, FileText, X } from "lucide-react";
+import { CHAT_TOOLS, toolLabel } from "../../services/toolDefinitions";
+import { executeToolCall } from "../../services/toolExecutor";
+import { Send, Loader2, Trash2, MessageSquare, User, Bot, Layers, FileText, X, ChevronDown, ChevronUp, Search, Copy, Check, RefreshCw, Square, ArrowDown, ArrowDownToLine } from "lucide-react";
 import { MarkdownRenderer } from "../common/MarkdownRenderer";
-import type { SearchResult } from "../../types";
+import type { ChatMessage, SearchResult, ToolCall } from "../../types";
 
-/** Normalize LaTeX math delimiters so remark-math can process them.
- *  Converts \(...\) → $...$ and \[...\] → $$...$$.
- *  Also detects bare LaTeX commands (e.g. \alpha, \mathbb{P}) not already
- *  inside $ delimiters and wraps them — because remark-math v6 only
- *  recognises $...$ / $$...$$ fences. */
+/** Normalize LaTeX math delimiters so remark-math can process them. */
 function normalizeMath(text: string): string {
-  // 1. Convert \(...\) → $...$ (inline LaTeX → remark-math inline)
   text = text.replace(/\\\((.+?)\\\)/gs, (_, m) => `$${m}$`);
-  // 2. Convert \[...\] → $$...$$ (display LaTeX → remark-math display)
   text = text.replace(/\\\[(.+?)\\\]/gs, (_, m) => `$$\n${m}\n$$`);
-  // 3. Fix double-dollars that became quad-dollars from the above
   text = text.replace(/\$\$\$\$/g, "$$");
   return text;
 }
+
+// Limits are read from settings now — these are fallback defaults.
 
 export function ChatPage() {
   const { convId } = useParams<{ convId: string }>();
@@ -32,15 +28,22 @@ export function ChatPage() {
   const { knowledgeBases, loadKBs } = useKBStore();
   const {
     conversations, activeConversationId,
-    newConversation, addMessage, updateLastAssistant,
+    newConversation, addMessage, updateLastAssistant, updateLastAssistantWithToolCalls,
     deleteConversation, setActiveConversation,
   } = useChatStore();
 
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState("");
-  const [selectedKbId, setSelectedKbId] = useState<string>("");
+  const [selectedKbIds, setSelectedKbIds] = useState<string[]>([]);
+  const [showKbDropdown, setShowKbDropdown] = useState(false);
   const [previewChunk, setPreviewChunk] = useState<SearchResult | null>(null);
+  const [toolStatus, setToolStatus] = useState("");
+  const [sourcesExpanded, setSourcesExpanded] = useState(true);
+  const [copiedMsgIdx, setCopiedMsgIdx] = useState<number | null>(null);
+  const [showScrollBtn, setShowScrollBtn] = useState(false);
+  const [autoScroll, setAutoScroll] = useState(true);
+  const [abortCtrl, setAbortCtrl] = useState<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { loadKBs(); }, []);
@@ -59,16 +62,33 @@ export function ChatPage() {
     }
   }, [convId]);
 
-  useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages]);
+  const scrollToBottom = (smooth = true) => {
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: smooth ? "smooth" : "instant" });
+  };
 
-  const handleSend = async () => {
-    if (!input.trim() || streaming) return;
+  useEffect(() => {
+    if (autoScroll) scrollToBottom();
+  }, [messages, toolStatus, autoScroll]);
+
+  // Track scroll position for scroll-to-bottom button
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
+      setShowScrollBtn(dist > 200);
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, []);
+
+  const handleSend = async (text?: string) => {
+    const msg = (text || input).trim();
+    if (!msg || streaming) return;
     const currentConv = conversations.find((c) => c.id === (convId || activeConversationId));
     if (!currentConv) return;
 
-    const userMsg = { role: "user" as const, content: input.trim() };
+    const userMsg = { role: "user" as const, content: msg };
     addMessage(currentConv.id, userMsg);
     setInput("");
     setError("");
@@ -88,89 +108,229 @@ export function ChatPage() {
         return;
       }
 
-      // RAG search
-      let context = "";
-      let sources: SearchResult[] = [];
-      if (selectedKbId) {
-        try {
-          const res = await searchAll({
-            kb_ids: [selectedKbId], query: userMsg.content,
-            search_type: "hybrid", top_k: 5, rerank: true,
-          });
-          if (res.results.length > 0) {
-            sources = res.results.slice(0, 5);
-            context = sources
-              .map((r, i) => `[${i + 1}] ${r.content}`)
-              .join("\n\n");
-          }
-        } catch (e) { console.error("RAG search failed:", e); }
-      }
-
-      // System prompt with math + citation instructions
       const mathInstr = "Wrap ALL math in $…$ (inline) or $$…$$ (block). Examples: $\\alpha$, $\\mathbb{P}$, $x^2$, $$\\vec{x}^T A \\vec{y}$$. NEVER output raw LaTeX without $ delimiters.";
-      const baseSys = context
-        ? `You are a helpful assistant. Answer based on the reference sources below. When using information from a source, cite it with [N] markers.\n\n${mathInstr}\n\nReference sources:\n${context}`
+      const kbNames = selectedKbIds.length > 0
+        ? selectedKbIds.map((id) => knowledgeBases.find((kb) => kb.id === id)?.name || id).join(", ")
+        : "";
+      const systemMsg = selectedKbIds.length > 0
+        ? `You are a helpful assistant with access to knowledge bases: ${kbNames}. Use the search_knowledge_base tool to find relevant information before answering. Use get_document to read full documents when needed. Use list_knowledge_bases to discover available knowledge. When using information from a search result, cite it with its [index] number. ${mathInstr}`
         : `You are a helpful assistant. ${mathInstr}`;
 
-      const history = [...currentConv.messages, userMsg]
-        .filter((m) => m.content)
-        .slice(-21);
+      // Build conversation history including tool messages
+      const rawHistory = ([...currentConv.messages, userMsg] as ChatMessage[])
+        .filter((m) => m.content || m.tool_calls)
+        .slice(-(settings.max_history_messages || 80));
 
-      const resp = await fetch(`${apiBase}/chat/completions`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
-        body: JSON.stringify({
-          model,
-          messages: [
-            { role: "system", content: baseSys },
-            ...history.map((m) => ({ role: m.role, content: m.content })),
-          ],
-          stream: true,
+      const messages: Array<Record<string, unknown>> = [
+        { role: "system", content: systemMsg },
+        ...rawHistory.map((m) => {
+          const out: Record<string, unknown> = { role: m.role };
+          if (m.content) out.content = m.content;
+          else out.content = null;
+          if (m.tool_calls) out.tool_calls = m.tool_calls.map((tc: ToolCall) => ({
+            id: tc.id, type: "function", function: tc.function,
+          }));
+          if (m.tool_call_id) out.tool_call_id = m.tool_call_id;
+          if (m.name) out.name = m.name;
+          return out;
         }),
-      });
+      ];
 
-      if (!resp.ok) { const err = await resp.text(); throw new Error(err); }
+      // ── Tool-calling loop ──
+      let allSources: SearchResult[] = [];
+      const kbList = knowledgeBases; // snapshot at send time
 
-      // SSE streaming
-      const reader = resp.body?.getReader();
-      if (!reader) throw new Error("No response body");
-      const decoder = new TextDecoder();
-      let fullContent = "";
+      for (let round = 0; round < (settings.max_tool_rounds || 10); round++) {
+        const resp = await fetch(`${apiBase}/chat/completions`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
+          body: JSON.stringify({ model, messages, tools: CHAT_TOOLS, tool_choice: "auto", stream: true }),
+        });
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const chunk = decoder.decode(value, { stream: true });
-        for (const line of chunk.split("\n")) {
-          if (line.startsWith("data: ")) {
+        if (!resp.ok) { const err = await resp.text(); throw new Error(err); }
+
+        const reader = resp.body?.getReader();
+        if (!reader) throw new Error("No response body");
+        const decoder = new TextDecoder();
+
+        let fullContent = "";
+        const toolCallsAcc = new Map<number, { id: string; name: string; arguments: string }>();
+        let finishReason = "";
+
+        // Throttled store updates: push to store at most every ~50ms during streaming
+        let lastFlush = 0;
+        let flushTimer: ReturnType<typeof setTimeout> | null = null;
+        const flushContent = () => {
+          updateLastAssistant(currentConv.id, fullContent, allSources);
+          lastFlush = Date.now();
+          flushTimer = null;
+        };
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const chunk = decoder.decode(value, { stream: true });
+          for (const line of chunk.split("\n")) {
+            if (!line.startsWith("data: ")) continue;
             const data = line.slice(6).trim();
             if (data === "[DONE]") continue;
             try {
               const json = JSON.parse(data);
-              const delta = json.choices?.[0]?.delta?.content;
-              if (delta) {
-                fullContent += delta;
-                updateLastAssistant(currentConv.id, fullContent, sources);
+              const choice = json.choices?.[0];
+              const delta = choice?.delta;
+              finishReason = choice?.finish_reason || finishReason;
+
+              if (delta?.content) {
+                fullContent += delta.content;
+                // Throttle: push to store every 50ms to avoid stuttery re-renders
+                const now = Date.now();
+                if (now - lastFlush >= 50 && !flushTimer) {
+                  flushContent();
+                } else if (!flushTimer) {
+                  flushTimer = setTimeout(flushContent, 50 - (now - lastFlush));
+                }
               }
-            } catch {}
+              if (delta?.tool_calls) {
+                for (const tc of delta.tool_calls) {
+                  const idx = tc.index ?? 0;
+                  if (!toolCallsAcc.has(idx)) {
+                    toolCallsAcc.set(idx, { id: tc.id || "", name: "", arguments: "" });
+                  }
+                  const entry = toolCallsAcc.get(idx)!;
+                  if (tc.id) entry.id = tc.id;
+                  if (tc.function?.name) entry.name += tc.function.name;
+                  if (tc.function?.arguments) entry.arguments += tc.function.arguments;
+                }
+              }
+            } catch { /* ignore malformed JSON in stream */ }
           }
         }
-      }
-      // Normalize math delimiters before final save
-      fullContent = normalizeMath(fullContent);
-      updateLastAssistant(currentConv.id, fullContent, sources);
+
+        // No tool calls — final answer
+        if (finishReason === "stop" && toolCallsAcc.size === 0) {
+          if (flushTimer) clearTimeout(flushTimer);
+          fullContent = normalizeMath(fullContent);
+          updateLastAssistant(currentConv.id, fullContent, allSources);
+          break;
+        }
+
+        // Tool calls requested — execute them
+        if (toolCallsAcc.size > 0) {
+          const tcArray: ToolCall[] = Array.from(toolCallsAcc.values()).map((tc) => ({
+            id: tc.id,
+            function: { name: tc.name, arguments: tc.arguments },
+          }));
+
+          // Save assistant message with tool_calls
+          updateLastAssistantWithToolCalls(currentConv.id, fullContent, tcArray, allSources);
+
+          // Append assistant message (with tool_calls) to the LLM message list
+          messages.push({
+            role: "assistant",
+            content: fullContent || null,
+            tool_calls: tcArray.map((tc) => ({
+              id: tc.id, type: "function", function: tc.function,
+            })),
+          });
+
+          // Execute each tool call
+          for (const tc of tcArray) {
+            setToolStatus(toolLabel(tc));
+            try {
+              const { result, newSources } = await executeToolCall(tc, kbList, {
+                maxSearchResultChars: settings.max_search_result_chars || 2000,
+                maxDocumentChars: settings.max_document_chars || 30000,
+                maxChunkChars: settings.max_chunk_chars || 800,
+              }, selectedKbIds.length > 0 ? selectedKbIds : undefined);
+              allSources = [...allSources, ...newSources];
+              messages.push({
+                role: "tool",
+                tool_call_id: result.tool_call_id,
+                content: result.content,
+                name: tc.function.name,
+              });
+              // Save tool result to conversation store for multi-turn history
+              addMessage(currentConv.id, {
+                role: "tool",
+                content: result.content,
+                tool_call_id: result.tool_call_id,
+                name: tc.function.name,
+              });
+            } catch (toolErr) {
+              const errContent = JSON.stringify({ error: String(toolErr) });
+              messages.push({
+                role: "tool",
+                tool_call_id: tc.id,
+                content: errContent,
+                name: tc.function.name,
+              });
+              addMessage(currentConv.id, {
+                role: "tool",
+                content: errContent,
+                tool_call_id: tc.id,
+                name: tc.function.name,
+              });
+            }
+          }
+          setToolStatus("");
+
+          // New placeholder for the next LLM response
+          addMessage(currentConv.id, { role: "assistant" as const, content: "" });
+          fullContent = "";
+        } else {
+          break; // finish_reason=stop with no content (edge case)
+        }
+      } // end tool-calling loop
+
     } catch (e) {
       const errMsg = String(e);
       updateLastAssistant(currentConv.id, `Error: ${errMsg}`);
       setError(errMsg);
     }
     setStreaming(false);
+    setToolStatus("");
   };
 
   const handleNew = () => { const id = newConversation(); navigate(`/chat/${id}`); };
   const handleDelete = () => {
     if (conv) { deleteConversation(conv.id); const id = newConversation(); navigate(`/chat/${id}`, { replace: true }); }
   };
+  const handleStop = () => {
+    abortCtrl?.abort();
+    setAbortCtrl(null);
+    setStreaming(false);
+    setToolStatus("");
+  };
+  const handleCopy = async (content: string, idx: number) => {
+    await navigator.clipboard.writeText(content);
+    setCopiedMsgIdx(idx);
+    setTimeout(() => setCopiedMsgIdx(null), 2000);
+  };
+  const handleRegenerate = async () => {
+    if (!conv || streaming) return;
+    const msgs = [...conv.messages];
+    let lastUserIdx = -1;
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      if (msgs[i].role === "user") { lastUserIdx = i; break; }
+    }
+    if (lastUserIdx < 0) return;
+    const lastUserContent = msgs[lastUserIdx].content;
+    // Remove last assistant message(s) and tool results from store
+    const trimmed = msgs.slice(0, lastUserIdx);
+    useChatStore.setState((s) => ({
+      conversations: s.conversations.map((c) => {
+        if (c.id !== conv.id) return c;
+        return { ...c, messages: trimmed, updatedAt: new Date().toISOString() };
+      }),
+    }));
+    handleSend(lastUserContent);
+  };
+
+  const toggleKb = (id: string) => {
+    setSelectedKbIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
+  };
+
+  const kbNameById = (id: string) => knowledgeBases.find((kb) => kb.id === id)?.name || id;
 
   if (!conv) {
     return <div className="flex items-center justify-center h-full"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>;
@@ -182,42 +342,107 @@ export function ChatPage() {
       <div className="flex items-center gap-3 px-6 py-3 border-b shrink-0 bg-card/50">
         <MessageSquare className="w-5 h-5 text-primary" />
         <h2 className="font-semibold text-sm truncate flex-1">{conv.title || t("chat.newConversation")}</h2>
-        <select value={selectedKbId} onChange={(e) => setSelectedKbId(e.target.value)}
-          className="text-xs border rounded-md px-2 py-1 bg-background max-w-[160px] truncate">
-          <option value="">{t("chat.noKb")}</option>
-          {knowledgeBases.map((kb) => (<option key={kb.id} value={kb.id}>{kb.name}</option>))}
-        </select>
+
+        {/* Multi-select KB dropdown */}
+        <div className="relative">
+          <button
+            onClick={() => setShowKbDropdown(!showKbDropdown)}
+            className="text-xs border rounded-md px-2 py-1 bg-background min-w-[100px] max-w-[180px] truncate text-left flex items-center gap-1"
+          >
+            {selectedKbIds.length === 0
+              ? t("chat.noKb")
+              : selectedKbIds.length === 1
+                ? kbNameById(selectedKbIds[0])
+                : t("chat.kbCount", { count: selectedKbIds.length })}
+            <ChevronDown className="w-3 h-3 ml-auto shrink-0" />
+          </button>
+          {showKbDropdown && (
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setShowKbDropdown(false)} />
+              <div className="absolute top-full right-0 mt-1 z-50 bg-card border rounded-lg shadow-lg p-1.5 min-w-[200px] max-h-[280px] overflow-y-auto">
+                <label className="flex items-center gap-2 px-2 py-1.5 hover:bg-muted rounded cursor-pointer text-xs">
+                  <input type="checkbox" checked={selectedKbIds.length === 0} onChange={() => setSelectedKbIds([])} />
+                  <span className="text-muted-foreground">{t("chat.noKb")}</span>
+                </label>
+                <hr className="my-1 border-border/50" />
+                {knowledgeBases.map((kb) => (
+                  <label key={kb.id} className="flex items-center gap-2 px-2 py-1.5 hover:bg-muted rounded cursor-pointer text-xs">
+                    <input type="checkbox" checked={selectedKbIds.includes(kb.id)} onChange={() => toggleKb(kb.id)} />
+                    <span className="truncate">{kb.name}</span>
+                    <span className="text-[10px] text-muted-foreground/60 ml-auto shrink-0">{kb.document_count}</span>
+                  </label>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+
         <button onClick={handleNew} className="px-3 py-1 border rounded-md text-xs hover:bg-muted">{t("chat.new")}</button>
+        <button onClick={() => setAutoScroll(!autoScroll)}
+          className={`p-1.5 hover:bg-muted rounded-md ${autoScroll ? "text-primary" : "text-muted-foreground"}`} title={t("chat.autoScroll")}><ArrowDownToLine className="w-4 h-4" /></button>
         {conv.messages.length > 0 && (
-          <button onClick={handleDelete} className="p-1.5 hover:bg-red-50 rounded-md text-muted-foreground hover:text-red-500" title={t("chat.clear")}><Trash2 className="w-4 h-4" /></button>
+          <>
+            <button onClick={handleRegenerate} disabled={streaming}
+              className="p-1.5 hover:bg-muted rounded-md text-muted-foreground" title={t("chat.regenerate")}><RefreshCw className="w-4 h-4" /></button>
+            <button onClick={handleDelete} className="p-1.5 hover:bg-red-50 rounded-md text-muted-foreground hover:text-red-500" title={t("chat.clear")}><Trash2 className="w-4 h-4" /></button>
+          </>
         )}
       </div>
 
+      {/* Selected KB tags */}
+      {selectedKbIds.length > 1 && (
+        <div className="flex flex-wrap gap-1 px-6 py-1.5 border-b shrink-0 bg-muted/20">
+          {selectedKbIds.map((id) => (
+            <span key={id} className="inline-flex items-center gap-1 text-[10px] bg-primary/10 text-primary rounded-full pl-2 pr-1 py-0.5">
+              {kbNameById(id)}
+              <X className="w-3 h-3 cursor-pointer hover:text-red-500" onClick={() => setSelectedKbIds((prev) => prev.filter((x) => x !== id))} />
+            </span>
+          ))}
+        </div>
+      )}
+
       {/* Messages */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
-        {messages.length === 0 ? (
+        {messages.length === 0 && !toolStatus ? (
           <div className="text-center py-16">
             <MessageSquare className="w-10 h-10 text-muted-foreground/30 mx-auto mb-3" />
             <p className="text-sm text-muted-foreground">{t("chat.emptyHint")}</p>
-            {!selectedKbId && <p className="text-xs text-muted-foreground mt-1">{t("chat.selectKbHint")}</p>}
+            {selectedKbIds.length === 0 && <p className="text-xs text-muted-foreground mt-1">{t("chat.selectKbHint")}</p>}
           </div>
         ) : (
-          messages.map((msg, i) => (
-            <div key={i} className={`flex gap-3 ${msg.role === "user" ? "justify-end" : ""}`}>
+          messages.filter((m) => m.role !== "tool").map((msg, i) => (
+            <div key={i} className={`flex gap-3 group ${msg.role === "user" ? "justify-end" : ""}`}>
               {msg.role === "assistant" && (
                 <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-0.5"><Bot className="w-4 h-4 text-primary" /></div>
               )}
-              <div className={`max-w-[80%] rounded-xl px-4 py-2.5 text-sm ${msg.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted"}`}>
-                {msg.role === "assistant" && msg.content ? (
-                  streaming && i === messages.length - 1 ? (
-                    <div className="whitespace-pre-wrap break-words">{msg.content}</div>
+              <div className="relative max-w-[80%]">
+                <div className={`rounded-xl px-4 py-2.5 text-sm ${msg.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted"}`}>
+                  {msg.role === "assistant" && msg.content ? (
+                    streaming && i === messages.length - 1 ? (
+                      <div className="whitespace-pre-wrap break-words">{msg.content}</div>
+                    ) : (
+                      <MarkdownRenderer className="prose prose-sm max-w-none dark:prose-invert text-sm">{msg.content}</MarkdownRenderer>
+                    )
+                  ) : msg.role === "assistant" && msg.tool_calls && !msg.content ? (
+                    <div className="flex items-center gap-2 text-muted-foreground text-xs">
+                      <Search className="w-3 h-3" />
+                      {msg.tool_calls.map((tc) => toolLabel(tc)).join(", ")}
+                    </div>
+                  ) : msg.role === "assistant" && streaming && i === messages.length - 1 ? (
+                    <Loader2 className="w-3 h-3 animate-spin inline" />
                   ) : (
-                    <MarkdownRenderer className="prose prose-sm max-w-none dark:prose-invert text-sm">{msg.content}</MarkdownRenderer>
-                  )
-                ) : msg.role === "assistant" && streaming && i === messages.length - 1 ? (
-                  <Loader2 className="w-3 h-3 animate-spin inline" />
-                ) : (
-                  <div className="whitespace-pre-wrap break-words">{msg.content}</div>
+                    <div className="whitespace-pre-wrap break-words">{msg.content}</div>
+                  )}
+                </div>
+                {/* Copy button on hover */}
+                {msg.content && (
+                  <button
+                    onClick={() => handleCopy(msg.content, i)}
+                    className={`absolute ${msg.role === "user" ? "-left-8 bottom-1" : "-right-8 bottom-1"} hidden group-hover:flex p-1 rounded hover:bg-muted text-muted-foreground transition-colors`}
+                    title="Copy"
+                  >
+                    {copiedMsgIdx === i ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
+                  </button>
                 )}
               </div>
               {msg.role === "user" && (
@@ -226,22 +451,48 @@ export function ChatPage() {
             </div>
           ))
         )}
-        {/* Sources — from the most recent assistant message */}
+
+        {/* Tool execution interstitial */}
+        {toolStatus && streaming && (
+          <div className="flex gap-3">
+            <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-0.5"><Bot className="w-4 h-4 text-primary" /></div>
+            <div className="max-w-[80%] rounded-xl px-4 py-2.5 text-sm bg-muted">
+              <div className="flex items-center gap-2 text-muted-foreground text-xs">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                {toolStatus}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Sources — collapsible, shows max 6 items */}
         {lastAssistantSources.length > 0 && (
           <div className="border-t pt-3 mt-2">
-            <p className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1"><Layers className="w-3 h-3" /> {t("chat.sources")}</p>
-            <div className="space-y-1">
-              {lastAssistantSources.map((s, i) => (
-                <div key={i}
-                  className="text-xs text-muted-foreground bg-muted/50 rounded px-2 py-1 flex items-start gap-1.5 cursor-pointer hover:bg-muted transition-colors"
-                  onClick={() => setPreviewChunk(s)}>
-                  <FileText className="w-3 h-3 shrink-0 mt-0.5" />
-                  <span className="font-mono text-[10px] text-primary/70">[{i + 1}]</span>
-                  <span className="truncate">{s.doc_name}</span>
-                  <span className="text-[10px] text-muted-foreground/60 ml-auto shrink-0">{(s.score * 100).toFixed(0)}%</span>
-                </div>
-              ))}
-            </div>
+            <button
+              onClick={() => setSourcesExpanded(!sourcesExpanded)}
+              className="w-full text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1 hover:text-foreground transition-colors"
+            >
+              <Layers className="w-3 h-3" />
+              {t("chat.sources")} ({lastAssistantSources.length})
+              {sourcesExpanded
+                ? <ChevronUp className="w-3 h-3 ml-auto" />
+                : <ChevronDown className="w-3 h-3 ml-auto" />
+              }
+            </button>
+            {sourcesExpanded && (
+              <div className={`${lastAssistantSources.length > 6 ? "max-h-[240px] overflow-y-auto" : ""} space-y-1`}>
+                {lastAssistantSources.map((s, i) => (
+                  <div key={i}
+                    className="text-xs text-muted-foreground bg-muted/50 rounded px-2 py-1 flex items-start gap-1.5 cursor-pointer hover:bg-muted transition-colors"
+                    onClick={() => setPreviewChunk(s)}>
+                    <FileText className="w-3 h-3 shrink-0 mt-0.5" />
+                    <span className="font-mono text-[10px] text-primary/70">[{i + 1}]</span>
+                    <span className="truncate">{s.doc_name}</span>
+                    <span className="text-[10px] text-muted-foreground/60 ml-auto shrink-0">{(s.score * 100).toFixed(0)}%</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
         {error && <div className="p-2 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">{error}</div>}
@@ -254,12 +505,28 @@ export function ChatPage() {
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
             placeholder={t("chat.placeholder")} rows={2} disabled={streaming}
             className="flex-1 px-4 py-2.5 border rounded-xl text-sm bg-background resize-none focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50" />
-          <button onClick={handleSend} disabled={streaming || !input.trim()}
-            className="px-4 bg-primary text-primary-foreground rounded-xl hover:opacity-90 disabled:opacity-50 shrink-0 self-stretch flex items-center justify-center">
-            {streaming ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-          </button>
+          {streaming ? (
+            <button onClick={handleStop}
+              className="px-4 bg-red-500 text-white rounded-xl hover:bg-red-600 shrink-0 self-stretch flex items-center justify-center">
+              <Square className="w-4 h-4" />
+            </button>
+          ) : (
+            <button onClick={() => handleSend()} disabled={!input.trim()}
+              className="px-4 bg-primary text-primary-foreground rounded-xl hover:opacity-90 disabled:opacity-50 shrink-0 self-stretch flex items-center justify-center">
+              <Send className="w-4 h-4" />
+            </button>
+          )}
         </div>
       </div>
+
+      {/* Scroll to bottom FAB */}
+      {showScrollBtn && (
+        <button onClick={() => scrollToBottom()}
+          className="absolute bottom-24 right-8 z-30 p-2 bg-card border rounded-full shadow-md hover:shadow-lg transition-all animate-in fade-in"
+        >
+          <ArrowDown className="w-4 h-4 text-muted-foreground" />
+        </button>
+      )}
 
       {/* Chunk preview dialog */}
       {previewChunk && (

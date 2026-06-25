@@ -1,6 +1,6 @@
 # Local Agent Knowledge Base
 
-A local-first desktop knowledge base for AI agents. Built with **Tauri v2 + React + Python**, supports **OpenAI-compatible embedding & rerank models**, **MinerU document parsing**, ships with an **MCP server** for Claude Code, and includes an **LLM Chat (RAG)** module in the sidebar.
+A local-first desktop knowledge base for AI agents. Built with **Tauri v2 + React + Python**, supports **OpenAI-compatible embedding & rerank models**, **MinerU document parsing**, ships with an **MCP server** for Claude Code, and includes an **LLM Chat (RAG)** module.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Tauri](https://img.shields.io/badge/Tauri-v2-orange)](https://tauri.app/)
@@ -13,39 +13,39 @@ A local-first desktop knowledge base for AI agents. Built with **Tauri v2 + Reac
 - **Multi-format**: PDF, DOCX, PPTX, XLSX, images, HTML, Markdown, plain text
 - **Auto pipeline**: Upload → MinerU Precise parse → chunk → embed → index — fully automatic
 - **File manager**: Explorer-style with folder tree, rename, move, delete
-- **Markdown preview**: Full rendering with LaTeX math (KaTeX) and lazy loading for large files
+- **Markdown preview**: Full rendering with LaTeX math (KaTeX), HTML tables, and lazy loading
 - **Document editing**: Edit parsed Markdown, auto re-index on save
 
 ### Knowledge Management
-- **Multiple KBs** with independent indexes and embedding model binding
+- **Multiple KBs** with independent indexes, dashboard statistics bar
 - **Display modes**: Card, Grid, Compact — with sorting and pin-to-top
-- **Hybrid search**: Dense vector + Chinese bigram keyword (FTS) + reranking, keyword-first strategy
+- **Hybrid search**: Dense vector + Chinese bigram keyword (FTS) + reranking, keyword-first
 - **Global search**: Search all KBs from the Dashboard in one query
-- **Export/Import**: ZIP backup with multi-select
 
 ### AI Model Integration (OpenAI-compatible)
 - **Embedding**: OpenAI, Ollama, vLLM, LiteLLM — any `/v1/embeddings` endpoint
-- **Rerank**: Jina AI, Cohere, DashScope (Qwen3-rerank) — any compatible endpoint
-- **LLM Chat**: Any OpenAI-compatible model, with optional KB selection for RAG
-- **Test Connection** buttons for each API in Settings
+- **Rerank**: Jina AI, Cohere, DashScope — any compatible endpoint
+- **LLM Chat**: Any OpenAI-compatible model with multi-KB RAG
+- **Test Connection** buttons in Settings
 
 ### LLM Chat (RAG)
-- Built-in chat module in the sidebar with multi-conversation support
-- **SSE streaming**: Real-time token-by-token display
-- **KB selection**: Pick a knowledge base for RAG-augmented answers
-- **Citations**: Responses include `[N]` markers — click to preview the source chunk
-- **Conversation management**: Rename or delete conversations (hover to reveal buttons)
-- **Markdown + Math**: Full Markdown rendering with KaTeX math formula support
-- Persistent storage via localStorage
+- Built-in chat module with multi-conversation support
+- **Tool calling**: LLM actively searches KBs, lists documents, and reads full content as needed
+- **SSE streaming**: Token-by-token display with 50ms throttle for smooth rendering
+- **Multi-KB selection**: Search across multiple KBs with access isolation
+- **Citations**: Responses include `[N]` markers — click to preview source chunks
+- **Conversation actions**: Rename, delete, regenerate, copy messages
+- **Code block copy**, math rendering, auto-scroll toggle
 
 ### MCP Server
-12 tools for AI agents — runs as part of the backend, requires the app to be running (or minimized to tray):
+13 tools for AI agents — single executable, requires the app running (or minimized to tray):
 
 | Tool | Description |
 |------|-------------|
 | `search_knowledge_base` | Hybrid search with reranking |
 | `list_knowledge_bases` | List all KBs with stats, detect orphaned data |
-| `get_document` | Full document content with optional chunk details |
+| `list_documents` | List all documents in a KB with metadata |
+| `get_document` | Full document content |
 | `get_document_chunks` | Get all chunks of a document |
 | `create_knowledge_base` | Create a new KB |
 | `delete_knowledge_base` | Delete a KB and all its data |
@@ -58,11 +58,11 @@ A local-first desktop knowledge base for AI agents. Built with **Tauri v2 + Reac
 
 ### Desktop UI
 - Custom frameless window with dark/light/system theme
-- English/Chinese localization
+- English/Chinese localization, built-in user guide
 - **System tray** — close to tray, backend stays alive for MCP
-- **Collapsible sidebar**: KB list + Chat conversations in separate sections, centered Overview icon
-- Settings panel: API keys, model parameters, chunking strategy all in one place
-- **Force restart backend**: Kill old process tree and restart from Settings
+- **Collapsible sidebar**: KB list + conversations with independent scrolling
+- Settings with tabbed navigation (General/Models/Chat/Data), configurable tool limits
+- **Data management**: KB ZIP import/export, settings.json import/export, one-click orphan cleanup
 
 ## Quick Start
 
@@ -80,14 +80,15 @@ npm run tauri dev
 ```
 
 ### First Launch
-1. Go to **Settings** → configure Embedding API (required) and optionally Rerank API
+The user guide opens automatically on first launch. Core steps:
+1. **Settings** → configure Embedding API and MinerU Token (required), optionally Rerank and LLM APIs
 2. Create a **Knowledge Base** → upload documents
-3. Search via the UI, or connect **Claude Code** via MCP
-4. Configure **LLM API** in Settings → open Chat in the sidebar to start asking questions
+3. Search via the UI, or connect Claude Code via MCP
+4. Configure LLM API → open Chat in the sidebar for RAG-powered Q&A
 
 ## MCP Server Setup
 
-Open the app → Settings → click **"Configure Claude Code MCP"** to auto-generate the config. Or use **"Copy MCP Config"** for one-click copy.
+Open the app → Settings → click **"Configure Claude Code MCP"** to auto-generate the config.
 
 **Dev mode** (auto-detected):
 ```json
@@ -95,14 +96,14 @@ Open the app → Settings → click **"Configure Claude Code MCP"** to auto-gene
   "mcpServers": {
     "local-knowledge-base": {
       "command": "uv",
-      "args": ["run", "--directory", "/path/to/services/python-backend", "local-kb-mcp"],
+      "args": ["run", "--directory", "/path/to/services/python-backend", "knowledge-backend", "mcp"],
       "env": { "KNOWLEDGE_BASE_DATA_DIR": "~/.local-knowledge-base" }
     }
   }
 }
 ```
 
-> The app must be running (or minimized to tray) for MCP to work. API keys are read from `settings.json` — no duplicate config needed.
+> The app must be running (or minimized to tray) for MCP to work. API keys are read from `settings.json`.
 
 ## Technology Stack
 
@@ -122,7 +123,7 @@ local-knowledge-base/
 ├── apps/desktop/              # Tauri v2 + React app
 │   ├── src-tauri/             # Rust backend
 │   └── src/                   # React frontend
-├── services/python-backend/   # Python backend (FastAPI REST + MCP stdio server, shared codebase)
+├── services/python-backend/   # Python backend (REST API + MCP in one executable)
 └── scripts/                   # Build & release scripts
 ```
 
@@ -132,7 +133,7 @@ All data stored locally at `~/.local-knowledge-base/`:
 
 ```
 ~/.local-knowledge-base/
-├── settings.json              # App configuration (API keys, etc.)
+├── settings.json              # App configuration
 ├── knowledge_bases.json       # KB registry
 ├── kb_{uuid}/                 # Knowledge base
 │   └── docs/{doc_id}/         # Document (metadata.json + full.md)

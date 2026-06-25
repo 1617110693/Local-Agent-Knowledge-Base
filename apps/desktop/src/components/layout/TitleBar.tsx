@@ -1,8 +1,9 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Minus, Square, X, Globe, Sun, Moon, Monitor } from "lucide-react";
+import { Minus, Square, X, Globe, Sun, Moon, Monitor, BookOpen } from "lucide-react";
 import { useI18n } from "../../i18n";
 import { useSettingsStore } from "../../stores/useSettingsStore";
+import { UserGuideDialog } from "../common/UserGuideDialog";
 
 type Theme = "light" | "dark" | "system";
 
@@ -56,6 +57,23 @@ export function TitleBar() {
   const { t, lang, setLang } = useI18n();
   const { theme, cycle } = useTheme();
 
+  const [showGuide, setShowGuide] = useState(false);
+  const [checkedFirstLaunch, setCheckedFirstLaunch] = useState(false);
+
+  // First-launch detection: if settings are all at defaults, auto-open the guide
+  useEffect(() => {
+    if (checkedFirstLaunch) return;
+    const s = useSettingsStore.getState().settings;
+    const isFresh = !s.embedding_api_key && !s.mineru_token && !s.llm_api_key;
+    if (isFresh) {
+      setCheckedFirstLaunch(true);
+      // Small delay so the UI is ready
+      const timer = setTimeout(() => setShowGuide(true), 600);
+      return () => clearTimeout(timer);
+    }
+    setCheckedFirstLaunch(true);
+  }, [checkedFirstLaunch]);
+
   const toggleLang = () => setLang(lang === "en" ? "zh-CN" : "en");
 
   return (
@@ -70,6 +88,13 @@ export function TitleBar() {
       </div>
 
       <div className="flex h-full">
+        <button
+          onClick={() => setShowGuide(true)}
+          className="w-10 h-full flex items-center justify-center hover:bg-muted transition-colors"
+          title={t("app.guide")}
+        >
+          <BookOpen className="w-3.5 h-3.5 text-muted-foreground" />
+        </button>
         <button
           onClick={() => cycle()}
           className="w-10 h-full flex items-center justify-center hover:bg-muted transition-colors"
@@ -103,6 +128,7 @@ export function TitleBar() {
           <X className="w-3.5 h-3.5 text-muted-foreground" />
         </button>
       </div>
+      {showGuide && <UserGuideDialog onClose={() => setShowGuide(false)} />}
     </div>
   );
 }

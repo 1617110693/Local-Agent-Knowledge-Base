@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { ChatMessage, SearchResult } from "../types";
+import type { ChatMessage, SearchResult, ToolCall } from "../types";
 
 export interface Conversation {
   id: string;
@@ -18,6 +18,7 @@ interface ChatState {
   setActiveConversation: (id: string) => void;
   addMessage: (convId: string, msg: ChatMessage) => void;
   updateLastAssistant: (convId: string, content: string, sources?: SearchResult[]) => void;
+  updateLastAssistantWithToolCalls: (convId: string, content: string, toolCalls: ToolCall[], sources?: SearchResult[]) => void;
   deleteConversation: (id: string) => void;
   clearAll: () => void;
   renameConversation: (id: string, title: string) => void;
@@ -80,6 +81,21 @@ export const useChatStore = create<ChatState>((set, get) => ({
       const messages = [...c.messages];
       if (messages.length > 0 && messages[messages.length - 1].role === "assistant") {
         messages[messages.length - 1] = { ...messages[messages.length - 1], content, sources };
+      }
+      return { ...c, messages, updatedAt: new Date().toISOString() };
+    });
+    saveConversations(conversations);
+    set({ conversations });
+  },
+
+  updateLastAssistantWithToolCalls: (convId, content, toolCalls, sources?) => {
+    const conversations = get().conversations.map((c) => {
+      if (c.id !== convId) return c;
+      const messages = [...c.messages];
+      if (messages.length > 0 && messages[messages.length - 1].role === "assistant") {
+        messages[messages.length - 1] = {
+          ...messages[messages.length - 1], content, tool_calls: toolCalls, sources,
+        };
       }
       return { ...c, messages, updatedAt: new Date().toISOString() };
     });

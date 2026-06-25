@@ -66,6 +66,12 @@ html, body {
   border: 1px solid hsl(var(--border));
 }
 
+/* Text selection — use muted gray instead of native blue */
+::selection {
+  background: hsl(var(--muted-foreground) / 0.25);
+  color: inherit;
+}
+
 /* Scrollbar — match theme */
 ::-webkit-scrollbar {
   width: 8px;
