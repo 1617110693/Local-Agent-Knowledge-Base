@@ -43,6 +43,10 @@ export const CHAT_TOOLS: ToolDefinition[] = [
             type: "boolean",
             description: "Whether to rerank results for better relevance (default true)",
           },
+          context_window: {
+            type: "integer",
+            description: "Number of neighboring chunks to include before/after each result (default 0, max 3). Set to 1-2 for more context around each hit.",
+          },
         },
         required: ["query"],
       },
@@ -98,6 +102,23 @@ export const CHAT_TOOLS: ToolDefinition[] = [
   {
     type: "function",
     function: {
+      name: "get_chunk_by_index",
+      description:
+        "Fetch a specific chunk from a document by its chunk_index. Use this when you need more context beyond what search_knowledge_base returned — for example, if the neighboring chunks weren't enough, request chunk_index-2 or chunk_index+2 to read further. The response includes prev_exists/next_exists hints.",
+      parameters: {
+        type: "object",
+        properties: {
+          kb_id: { type: "string", description: "Knowledge base ID" },
+          doc_id: { type: "string", description: "Document ID" },
+          chunk_index: { type: "integer", description: "The chunk index to fetch (0-based)" },
+        },
+        required: ["kb_id", "doc_id", "chunk_index"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "list_knowledge_bases",
       description:
         "List all available knowledge bases with their document and chunk counts. Use this to discover what knowledge bases exist before searching.",
@@ -125,6 +146,8 @@ export function toolLabel(toolCall: ToolCall): string {
       return "Listing knowledge bases...";
     case "list_documents":
       return "Listing documents...";
+    case "get_chunk_by_index":
+      return "Fetching specific chunk...";
     default:
       return `Running ${toolCall.function.name}...`;
   }

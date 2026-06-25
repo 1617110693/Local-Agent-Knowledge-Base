@@ -52,8 +52,12 @@ def search_knowledge_base(
     search_type: Literal["hybrid", "vector", "fts"] = "hybrid",
     rerank: bool = True,
     doc_id_filter: Optional[str] = None,
+    context_window: int = 0,
 ) -> list[dict]:
-    """Search a knowledge base with hybrid (vector + BM25) search and optional reranking."""
+    """Search a knowledge base with hybrid (vector + BM25) search and optional reranking.
+
+    Set context_window > 0 to include neighboring chunks (prev/next) for each result,
+    giving more surrounding context around each hit."""
     db = _get_db()
     try:
         embedder = OpenAICompatibleEmbedder(
@@ -96,6 +100,10 @@ def search_knowledge_base(
                 results = [r for r in results[:top_k] if len(r.get("content", "").strip()) >= 20]
         else:
             results = [r for r in results[:top_k] if len(r.get("content", "").strip()) >= 20]
+
+        # Enrich with neighboring chunks if requested
+        if context_window > 0 and results:
+            results = db.enrich_with_context(results, kb_id, context_window)
 
         return results
     finally:
@@ -612,6 +620,24 @@ def get_document_chunks(kb_id: str, doc_id: str) -> dict:
                 for c in chunks
             ],
         }
+    finally:
+        db.close()
+
+
+@mcp.tool
+def get_chunk_by_index(kb_id: str, doc_id: str, chunk_index: int) -> dict:
+    """Fetch a single chunk by doc_id + chunk_index.
+
+    Use this when context_window didn't give enough surrounding context —
+    you can request further chunks by incrementing or decrementing chunk_index.
+    The response includes prev_exists / next_exists hints so you know whether
+    more chunks are available in either direction."""
+    db = _get_db()
+    try:
+        chunk = db.get_chunk_by_index(kb_id, doc_id, chunk_index)
+        if chunk is None:
+            return {"error": f"Chunk not found: doc={doc_id} index={chunk_index}"}
+        return chunk
     finally:
         db.close()
 

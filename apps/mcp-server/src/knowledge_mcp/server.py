@@ -105,6 +105,7 @@ def search_knowledge_base(
     search_type: Literal["hybrid", "vector", "fts"] = "hybrid",
     rerank: bool = True,
     doc_id_filter: Optional[str] = None,
+    context_window: int = 0,
 ) -> list[dict]:
     """
     Search a knowledge base for chunks matching the query.
@@ -121,9 +122,14 @@ def search_knowledge_base(
                      semantic only, 'fts' for keyword only.
         rerank: Whether to apply reranking model to refine results.
         doc_id_filter: Optional document UUID to restrict search scope.
+        context_window: Number of neighboring chunks to include before/after
+                       each result (default 0). Set to 1-3 for more context
+                       around each hit.
 
     Returns:
         List of chunks with chunk_id, doc_id, doc_name, content, score, metadata.
+        When context_window > 0, each result includes a "context" object with
+        "prev" and "next" arrays of neighboring chunks.
     """
     searcher = _get_searcher()
     try:
@@ -135,6 +141,8 @@ def search_knowledge_base(
             rerank=rerank,
             doc_id_filter=doc_id_filter,
         )
+        if context_window > 0 and results:
+            results = searcher.enrich_with_context(results, kb_id, context_window)
         return results
     finally:
         searcher.close()

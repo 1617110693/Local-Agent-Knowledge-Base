@@ -172,6 +172,9 @@ class LanceDBSearcher:
                 metadata = json.loads(r.get("metadata_json", "{}"))
             except (json.JSONDecodeError, TypeError):
                 pass
+            # Surface LanceDB columns into metadata for downstream use
+            metadata.setdefault("chunk_index", r.get("chunk_index"))
+            metadata.setdefault("page", r.get("page_number"))
             formatted.append(
                 {
                     "chunk_id": r.get("chunk_id", ""),
@@ -275,6 +278,88 @@ class LanceDBSearcher:
     def close(self):
         self._http.close()
         self._db = None
+
+    def enrich_with_context(
+        self,
+        results: List[dict],
+        kb_id: str,
+        context_window: int = 0,
+    ) -> List[dict]:
+        """For each search result, attach neighboring chunks (prev/next context)."""
+        if context_window <= 0 or not results:
+            return results
+
+        table_name = self._table_name(kb_id)
+        if table_name not in self.db.table_names():
+            return results
+
+        table = self.db.open_table(table_name)
+
+        # Collect all (doc_id, chunk_index) pairs that need neighbors
+        needs_neighbors: dict[str, set[int]] = {}
+        for r in results:
+            doc_id = r.get("doc_id", "")
+            chunk_idx = r.get("metadata", {}).get("chunk_index")
+            if not doc_id or chunk_idx is None:
+                continue
+            if doc_id not in needs_neighbors:
+                needs_neighbors[doc_id] = set()
+            for offset in range(-context_window, context_window + 1):
+                if offset == 0:
+                    continue
+                needs_neighbors[doc_id].add(chunk_idx + offset)
+
+        if not needs_neighbors:
+            return results
+
+        # Batch-fetch all needed neighbor chunks per document
+        neighbor_cache: dict[tuple[str, int], dict] = {}
+        for doc_id, indices in needs_neighbors.items():
+            if not indices:
+                continue
+            try:
+                rows = table.search().where(f"doc_id = '{doc_id}'").to_list()
+            except Exception:
+                continue
+            for row in rows:
+                ci = row.get("chunk_index")
+                if ci is not None and ci in indices:
+                    metadata = {}
+                    try:
+                        metadata = json.loads(row.get("metadata_json", "{}"))
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+                    neighbor_cache[(doc_id, ci)] = {
+                        "chunk_id": row.get("chunk_id", ""),
+                        "content": row.get("content", ""),
+                        "chunk_index": ci,
+                        "page_number": row.get("page_number", 0),
+                        "metadata": metadata,
+                    }
+
+        # Attach neighbors to each result
+        for r in results:
+            doc_id = r.get("doc_id", "")
+            chunk_idx = r.get("metadata", {}).get("chunk_index")
+            if not doc_id or chunk_idx is None:
+                r["context"] = {"prev": [], "next": []}
+                continue
+
+            prev_chunks = []
+            next_chunks = []
+            for offset in range(1, context_window + 1):
+                prev = neighbor_cache.get((doc_id, chunk_idx - offset))
+                if prev:
+                    prev_chunks.append(prev)
+                nxt = neighbor_cache.get((doc_id, chunk_idx + offset))
+                if nxt:
+                    next_chunks.append(nxt)
+            # prev_chunks are collected closest-first — reverse for document order
+            prev_chunks.reverse()
+
+            r["context"] = {"prev": prev_chunks, "next": next_chunks}
+
+        return results
 
     # ── Document management ──
 

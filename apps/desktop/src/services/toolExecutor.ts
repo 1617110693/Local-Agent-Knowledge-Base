@@ -28,6 +28,7 @@ export async function executeToolCall(
   kbList: KbInfo[],
   limits?: ToolLimits,
   allowedKbIds?: string[],
+  defaultContextWindow?: number,
 ): Promise<{ result: ToolExecutionResult; newSources: SearchResult[] }> {
   const { name, arguments: argsJson } = toolCall.function;
   let parsedArgs: Record<string, unknown>;
@@ -62,6 +63,7 @@ export async function executeToolCall(
       const topK = Math.min(Number(parsedArgs.top_k) || 10, 50);
       const searchType = (parsedArgs.search_type as string) || "hybrid";
       const rerank = parsedArgs.rerank !== false;
+      const contextWindow = Math.min(Number(parsedArgs.context_window) || defaultContextWindow || 0, 3);
 
       const res = await searchAll({
         kb_ids: kbIds,
@@ -69,7 +71,10 @@ export async function executeToolCall(
         search_type: searchType as "hybrid" | "vector" | "fts",
         top_k: topK,
         rerank,
+        context_window: contextWindow,
       });
+
+      const maxChars = limits?.maxSearchResultChars ?? 2000;
 
       return {
         result: {
@@ -77,14 +82,32 @@ export async function executeToolCall(
           role: "tool",
           content: JSON.stringify({
             total: res.results.length,
-            results: res.results.map((r, i) => ({
-              index: i + 1, // 1-based for LLM citation
-              doc_id: r.doc_id,
-              doc_name: r.doc_name,
-              score: Math.round(r.score * 100) / 100,
-              content: r.content.slice(0, limits?.maxSearchResultChars ?? 2000),
-              page: r.metadata?.page,
-            })),
+            results: res.results.map((r, i) => {
+              const entry: Record<string, unknown> = {
+                index: i + 1,
+                doc_id: r.doc_id,
+                doc_name: r.doc_name,
+                score: Math.round(r.score * 100) / 100,
+                content: r.content.slice(0, maxChars),
+                page: r.metadata?.page,
+              };
+              // Include neighbor context if present
+              if (r.context) {
+                if (r.context.prev.length > 0) {
+                  entry.prev_chunks = r.context.prev.map((c) => ({
+                    content: c.content.slice(0, maxChars),
+                    chunk_index: c.chunk_index,
+                  }));
+                }
+                if (r.context.next.length > 0) {
+                  entry.next_chunks = r.context.next.map((c) => ({
+                    content: c.content.slice(0, maxChars),
+                    chunk_index: c.chunk_index,
+                  }));
+                }
+              }
+              return entry;
+            }),
           }),
         },
         newSources: res.results,
@@ -173,6 +196,41 @@ export async function executeToolCall(
               created_at: d.created_at,
               updated_at: d.updated_at,
             })),
+          }),
+        },
+        newSources: [],
+      };
+    }
+
+    // ── get_chunk_by_index ──
+    case "get_chunk_by_index": {
+      const kbId = String(parsedArgs.kb_id);
+      const accessErr4 = checkKbAccess(kbId);
+      if (accessErr4) return { result: { tool_call_id: toolCall.id, role: "tool", content: JSON.stringify({ error: accessErr4 }) }, newSources: [] };
+      const docId = String(parsedArgs.doc_id);
+      const chunkIdx = Number(parsedArgs.chunk_index);
+      if (isNaN(chunkIdx)) return { result: { tool_call_id: toolCall.id, role: "tool", content: JSON.stringify({ error: "chunk_index must be a number" }) }, newSources: [] };
+
+      const { getChunkByIndex } = await import("./pythonClient");
+      const res = await getChunkByIndex({ kb_id: kbId, doc_id: docId, chunk_index: chunkIdx });
+      if ("error" in res) {
+        return { result: { tool_call_id: toolCall.id, role: "tool", content: JSON.stringify({ error: res.error }) }, newSources: [] };
+      }
+
+      const c = res.chunk;
+      return {
+        result: {
+          tool_call_id: toolCall.id,
+          role: "tool",
+          content: JSON.stringify({
+            doc_id: c.doc_id,
+            doc_name: c.doc_name,
+            chunk_index: c.chunk_index,
+            page_number: c.page_number,
+            content: c.content.slice(0, limits?.maxChunkChars ?? 800),
+            prev_exists: c.prev_exists,
+            next_exists: c.next_exists,
+            hint: "Use get_chunk_by_index with chunk_index ±1 to fetch more context in this direction.",
           }),
         },
         newSources: [],

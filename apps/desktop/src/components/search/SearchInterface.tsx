@@ -1,11 +1,11 @@
 import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { search as searchAPI } from "../../services/pythonClient";
+import { search as searchAPI, getChunkByIndex, type ChunkByIndex } from "../../services/pythonClient";
 import { useSettingsStore } from "../../stores/useSettingsStore";
 import { useI18n } from "../../i18n";
-import { Search, Loader2, FileText, ArrowLeft, X } from "lucide-react";
+import { Search, Loader2, FileText, ArrowLeft, X, ChevronDown, ChevronUp, Hash } from "lucide-react";
 import { MarkdownRenderer } from "../common/MarkdownRenderer";
-import type { SearchResult } from "../../types";
+import type { SearchResult, NeighborChunk } from "../../types";
 
 export function SearchInterface() {
   const { kbId } = useParams<{ kbId: string }>();
@@ -17,18 +17,57 @@ export function SearchInterface() {
   const [searching, setSearching] = useState(false);
   const [searchType, setSearchType] = useState<"hybrid" | "vector" | "fts">("hybrid");
   const [rerank, setRerank] = useState(true);
+  const [contextWindow, setContextWindow] = useState(0);
   const [elapsed, setElapsed] = useState(0);
   const [error, setError] = useState("");
   const [selectedChunk, setSelectedChunk] = useState<SearchResult | null>(null);
+  const [selectedNeighbor, setSelectedNeighbor] = useState<NeighborChunk | null>(null);
+  const [expandedContext, setExpandedContext] = useState<Set<string>>(new Set());
+
+  // Chunk index lookup (shown after search results appear)
+  const [chunkLookupIndex, setChunkLookupIndex] = useState("");
+  const [chunkLookupDocId, setChunkLookupDocId] = useState("");
+  const [chunkLookupResult, setChunkLookupResult] = useState<ChunkByIndex | null>(null);
+  const [chunkLookupError, setChunkLookupError] = useState("");
+  const [chunkLookupLoading, setChunkLookupLoading] = useState(false);
+  const [lookupDialogOpen, setLookupDialogOpen] = useState(false);
+
+  // Derive unique docs from current results for the dropdown
+  const uniqueDocs = Array.from(
+    new Map(results.map((r) => [r.doc_id, { doc_id: r.doc_id, doc_name: r.doc_name }])).values()
+  );
+
+  const handleChunkLookup = async () => {
+    if (!kbId || !chunkLookupIndex.trim() || !chunkLookupDocId) return;
+    setChunkLookupLoading(true); setChunkLookupError(""); setChunkLookupResult(null);
+    try {
+      const res = await getChunkByIndex({ kb_id: kbId, doc_id: chunkLookupDocId, chunk_index: Number(chunkLookupIndex) });
+      if ("error" in res) {
+        setChunkLookupError(res.error);
+      } else {
+        setChunkLookupResult(res.chunk);
+      }
+    } catch (e) { setChunkLookupError(String(e)); }
+    setChunkLookupLoading(false);
+  };
 
   const handleSearch = async () => {
     if (!query.trim() || !kbId) return;
-    setSearching(true); setError("");
+    setSearching(true); setError(""); setExpandedContext(new Set()); setChunkLookupResult(null); setChunkLookupError("");
     try {
-      const res = await searchAPI({ kb_id: kbId, query, search_type: searchType, top_k: 10, rerank });
+      const res = await searchAPI({ kb_id: kbId, query, search_type: searchType, top_k: 10, rerank, context_window: contextWindow });
       setResults(res.results); setElapsed(res.search_time_ms);
     } catch (e) { setError(String(e)); }
     setSearching(false);
+  };
+
+  const toggleContext = (chunkId: string) => {
+    setExpandedContext((prev) => {
+      const next = new Set(prev);
+      if (next.has(chunkId)) next.delete(chunkId);
+      else next.add(chunkId);
+      return next;
+    });
   };
 
   return (
@@ -56,7 +95,7 @@ export function SearchInterface() {
         </button>
       </div>
 
-      <div className="flex gap-4 mb-6 text-sm">
+      <div className="flex gap-4 mb-6 text-sm flex-wrap items-center">
         <select value={searchType} onChange={(e) => setSearchType(e.target.value as any)} className="px-3 py-1.5 border rounded-md bg-background text-sm">
           <option value="hybrid">{t("search.hybrid")}</option>
           <option value="vector">{t("search.vector")}</option>
@@ -65,6 +104,14 @@ export function SearchInterface() {
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={rerank} onChange={(e) => setRerank(e.target.checked)} className="rounded" />
           {t("search.rerank")}
+        </label>
+        <label className="flex items-center gap-1.5 text-sm">
+          <span className="text-muted-foreground">{t("search.contextWindow") || "Context window:"}</span>
+          <select value={contextWindow} onChange={(e) => setContextWindow(Number(e.target.value))} className="px-2 py-1.5 border rounded-md bg-background text-sm">
+            <option value="0">{t("search.noContext") || "Off"}</option>
+            <option value="1">±1 {t("search.contextChunks") || "chunk"}</option>
+            <option value="2">±2 {t("search.contextChunks") || "chunks"}</option>
+          </select>
         </label>
         {rerank && settings.rerank_model && (
           <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded self-center">{settings.rerank_model}</span>
@@ -77,14 +124,65 @@ export function SearchInterface() {
         <p className="text-xs text-muted-foreground mb-3">{t("search.results", { count: results.length, time: elapsed })}</p>
       )}
 
+      {/* Chunk index lookup — shown only after results appear */}
+      {results.length > 0 && (
+        <details className="mb-4 text-sm border rounded-lg bg-card/50">
+          <summary className="px-3 py-2 cursor-pointer text-muted-foreground hover:text-foreground select-none flex items-center gap-1.5">
+            <Hash className="w-3.5 h-3.5" />
+            <span>{t("search.jumpToChunk") || "Jump to chunk"}</span>
+          </summary>
+          <div className="px-3 pb-3 space-y-2">
+            <div className="flex gap-2 flex-wrap items-end">
+              <label className="flex flex-col gap-0.5">
+                <span className="text-[11px] text-muted-foreground">{t("search.chunkIndexLabel") || "Chunk index"}</span>
+                <input type="number" min="0" value={chunkLookupIndex}
+                  onChange={(e) => setChunkLookupIndex(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleChunkLookup()}
+                  placeholder="0" className="w-24 px-2 py-1.5 border rounded-md text-xs bg-background" />
+              </label>
+              <label className="flex flex-col gap-0.5">
+                <span className="text-[11px] text-muted-foreground">{t("search.selectDoc") || "Document"}</span>
+                <select value={chunkLookupDocId}
+                  onChange={(e) => setChunkLookupDocId(e.target.value)}
+                  className="px-2 py-1.5 border rounded-md text-xs bg-background max-w-[220px] truncate">
+                  <option value="">{t("search.selectDocPlaceholder") || "-- select --"}</option>
+                  {uniqueDocs.map((d) => (
+                    <option key={d.doc_id} value={d.doc_id}>{d.doc_name}</option>
+                  ))}
+                </select>
+              </label>
+              <button onClick={handleChunkLookup} disabled={chunkLookupLoading || !chunkLookupIndex.trim() || !chunkLookupDocId}
+                className="px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:opacity-90 disabled:opacity-50">
+                {chunkLookupLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : (t("search.lookupBtn") || "Lookup")}
+              </button>
+            </div>
+            {chunkLookupError && <p className="text-xs text-red-600">{chunkLookupError}</p>}
+            {chunkLookupResult && (
+              <div className="p-3 border rounded-lg bg-card cursor-pointer hover:border-primary/50 transition-colors text-xs"
+                onClick={() => setLookupDialogOpen(true)}>
+                <div className="flex items-center gap-2 mb-1">
+                  <FileText className="w-3.5 h-3.5 text-primary shrink-0" />
+                  <span className="font-medium truncate">{chunkLookupResult.doc_name}</span>
+                  <span className="text-[10px] bg-muted px-1 rounded shrink-0">chunk #{chunkLookupResult.chunk_index}</span>
+                  {(chunkLookupResult.page_number ?? 0) > 0 && <span className="text-[10px] bg-muted px-1 rounded shrink-0">p.{chunkLookupResult.page_number}</span>}
+                  <span className="text-[10px] text-muted-foreground ml-auto shrink-0">
+                    {chunkLookupResult.prev_exists ? "← prev" : "← start"} · {chunkLookupResult.next_exists ? "next →" : "end →"}
+                  </span>
+                </div>
+                <p className="text-muted-foreground line-clamp-2">{chunkLookupResult.content.slice(0, 200)}</p>
+              </div>
+            )}
+          </div>
+        </details>
+      )}
+
       <div className="space-y-3">
         {results.map((r) => (
           <div
             key={r.chunk_id}
-            className="p-4 border rounded-lg bg-card cursor-pointer hover:border-primary/50 transition-colors"
-            onClick={() => setSelectedChunk(r)}
+            className="p-4 border rounded-lg bg-card hover:border-primary/50 transition-colors"
           >
-            <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center justify-between mb-2 cursor-pointer" onClick={() => setSelectedChunk(r)}>
               <div className="flex items-center gap-2">
                 <FileText className="w-4 h-4 text-primary" />
                 <span className="text-sm font-medium">{r.doc_name}</span>
@@ -93,14 +191,39 @@ export function SearchInterface() {
                 {(r.score * 100).toFixed(0)}%
               </span>
             </div>
-            <div className="max-h-32 overflow-hidden relative">
+            {/* Matched chunk content */}
+            <div className="max-h-32 overflow-hidden relative cursor-pointer" onClick={() => setSelectedChunk(r)}>
               <MarkdownRenderer className="prose prose-sm max-w-none dark:prose-invert text-muted-foreground">
                 {r.content}
               </MarkdownRenderer>
               <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-card to-transparent pointer-events-none" />
             </div>
-            {r.metadata?.page && (
-              <p className="text-xs text-muted-foreground mt-2">{t("search.page")} {r.metadata.page}</p>
+            <p className="text-[11px] text-muted-foreground mt-2 flex items-center gap-2">
+              {r.metadata?.chunk_index != null && <span>Chunk #{r.metadata.chunk_index}</span>}
+              {(r.metadata?.page ?? 0) > 0 && <span>· {t("search.page")} {r.metadata.page}</span>}
+            </p>
+
+            {/* Neighbor chunks (context window) */}
+            {r.context && (r.context.prev.length > 0 || r.context.next.length > 0) && (
+              <div className="mt-2 border-t pt-2">
+                <button
+                  onClick={(e) => { e.stopPropagation(); toggleContext(r.chunk_id); }}
+                  className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {expandedContext.has(r.chunk_id) ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                  {t("search.neighborChunks") || "Neighboring chunks"} ({r.context.prev.length + r.context.next.length})
+                </button>
+                {expandedContext.has(r.chunk_id) && (
+                  <div className="mt-2 space-y-2">
+                    {r.context.prev.map((nc: NeighborChunk, i: number) => (
+                      <NeighborChunkCard key={nc.chunk_id || `prev-${i}`} chunk={nc} label={t("search.prevChunk") || "Previous"} onClick={() => setSelectedNeighbor(nc)} />
+                    ))}
+                    {r.context.next.map((nc: NeighborChunk, i: number) => (
+                      <NeighborChunkCard key={nc.chunk_id || `next-${i}`} chunk={nc} label={t("search.nextChunk") || "Next"} onClick={() => setSelectedNeighbor(nc)} />
+                    ))}
+                  </div>
+                )}
+              </div>
             )}
           </div>
         ))}
@@ -116,7 +239,7 @@ export function SearchInterface() {
                 <div className="min-w-0">
                   <h3 className="font-semibold text-sm truncate">{selectedChunk.doc_name}</h3>
                   <p className="text-xs text-muted-foreground">
-                    {selectedChunk.metadata?.page != null && <span>{t("search.page")} {selectedChunk.metadata.page} · </span>}
+                    {(selectedChunk.metadata?.page ?? 0) > 0 && <span>{t("search.page")} {selectedChunk.metadata.page} · </span>}
                     {selectedChunk.metadata?.chunk_index != null && <span>{t("search.chunkIndex", { index: selectedChunk.metadata.chunk_index })} · </span>}
                     <span className="font-mono text-primary">{(selectedChunk.score * 100).toFixed(1)}%</span>
                   </p>
@@ -134,6 +257,87 @@ export function SearchInterface() {
           </div>
         </div>
       )}
+
+      {/* Neighbor chunk detail dialog */}
+      {selectedNeighbor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setSelectedNeighbor(null)}>
+          <div className="bg-card border rounded-xl shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-4 border-b shrink-0">
+              <div className="flex items-center gap-3 min-w-0">
+                <FileText className="w-5 h-5 text-primary shrink-0" />
+                <div className="min-w-0">
+                  <h3 className="font-semibold text-sm">{t("search.neighborChunkDetail") || "Neighbor Chunk"}</h3>
+                  <p className="text-xs text-muted-foreground">
+                    <span>Chunk #{selectedNeighbor.chunk_index}</span>
+                    {selectedNeighbor.page_number != null && selectedNeighbor.page_number > 0 && (
+                      <span> · p.{selectedNeighbor.page_number}</span>
+                    )}
+                  </p>
+                </div>
+              </div>
+              <button onClick={() => setSelectedNeighbor(null)} className="p-1 hover:bg-muted rounded-md shrink-0">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6 overflow-y-auto flex-1">
+              <MarkdownRenderer className="prose prose-sm max-w-none dark:prose-invert">
+                {selectedNeighbor.content}
+              </MarkdownRenderer>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Lookup result detail dialog */}
+      {lookupDialogOpen && chunkLookupResult && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setLookupDialogOpen(false)}>
+          <div className="bg-card border rounded-xl shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-4 border-b shrink-0">
+              <div className="flex items-center gap-3 min-w-0">
+                <FileText className="w-5 h-5 text-primary shrink-0" />
+                <div className="min-w-0">
+                  <h3 className="font-semibold text-sm truncate">{chunkLookupResult.doc_name}</h3>
+                  <p className="text-xs text-muted-foreground">
+                    <span>Chunk #{chunkLookupResult.chunk_index}</span>
+                    {(chunkLookupResult.page_number ?? 0) > 0 && <span> · p.{chunkLookupResult.page_number}</span>}
+                    <span className="ml-2 text-[10px] text-muted-foreground/60">
+                      {chunkLookupResult.prev_exists ? "← prev" : "← start"} · {chunkLookupResult.next_exists ? "next →" : "end →"}
+                    </span>
+                  </p>
+                </div>
+              </div>
+              <button onClick={() => setLookupDialogOpen(false)} className="p-1 hover:bg-muted rounded-md shrink-0">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6 overflow-y-auto flex-1">
+              <MarkdownRenderer className="prose prose-sm max-w-none dark:prose-invert">
+                {chunkLookupResult.content}
+              </MarkdownRenderer>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Small card showing a neighboring chunk — clickable to open detail dialog. */
+function NeighborChunkCard({ chunk, label, onClick }: { chunk: NeighborChunk; label: string; onClick: () => void }) {
+  return (
+    <div className="p-2.5 rounded-md bg-muted/50 border border-border/50 text-xs cursor-pointer hover:border-primary/40 transition-colors" onClick={onClick}>
+      <div className="flex items-center gap-2 mb-1">
+        <span className="font-medium text-muted-foreground">{label}</span>
+        <span className="text-[10px] bg-muted px-1 rounded">chunk #{chunk.chunk_index}</span>
+        {chunk.page_number != null && chunk.page_number > 0 && (
+          <span className="text-[10px] bg-muted px-1 rounded">p.{chunk.page_number}</span>
+        )}
+      </div>
+      <div className="text-muted-foreground line-clamp-4">
+        <MarkdownRenderer className="prose prose-xs max-w-none dark:prose-invert">
+          {chunk.content}
+        </MarkdownRenderer>
+      </div>
     </div>
   );
 }

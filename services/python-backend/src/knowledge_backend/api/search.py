@@ -20,6 +20,7 @@ class SearchRequest(BaseModel):
     search_type: str = "hybrid"
     top_k: int = 10
     rerank: bool = True
+    context_window: int = 0
     filters: Optional[dict] = None
 
 
@@ -75,6 +76,10 @@ def search(req: SearchRequest):
         else:
             results = [r for r in results[: req.top_k] if len(r.get("content", "").strip()) >= 20]
 
+        # Enrich with neighboring chunks if context_window > 0
+        if req.context_window > 0 and results:
+            results = db.enrich_with_context(results, req.kb_id, req.context_window)
+
         elapsed = int((time.time() - start) * 1000)
 
         return {"results": results, "total": len(results), "search_time_ms": elapsed}
@@ -88,6 +93,7 @@ class SearchAllRequest(BaseModel):
     search_type: str = "hybrid"
     top_k: int = 10
     rerank: bool = True
+    context_window: int = 0
 
 
 @router.post("/search-all")
@@ -161,8 +167,40 @@ def search_all(req: SearchAllRequest):
         else:
             all_results = [r for r in all_results[: req.top_k] if len(r.get("content", "").strip()) >= 20]
 
+        # Enrich with neighboring chunks if context_window > 0
+        if req.context_window > 0 and all_results:
+            # Group by kb_id and enrich each group separately
+            by_kb: dict[str, list[dict]] = {}
+            for r in all_results:
+                kb = r.get("kb_id", "")
+                by_kb.setdefault(kb, []).append(r)
+            enriched = []
+            for kb_id, group in by_kb.items():
+                enriched.extend(db.enrich_with_context(group, kb_id, req.context_window))
+            all_results = enriched
+
         elapsed = int((time.time() - start) * 1000)
 
         return {"results": all_results, "total": len(all_results), "search_time_ms": elapsed}
+    finally:
+        db.close()
+
+
+class GetChunkRequest(BaseModel):
+    kb_id: str
+    doc_id: str
+    chunk_index: int
+
+
+@router.post("/get-chunk-by-index")
+def get_chunk_by_index(req: GetChunkRequest):
+    """Fetch a single chunk by doc_id + chunk_index, with prev/next existence hints."""
+    config = get_config()
+    db = LanceDBManager(Path(config.knowledge_base_data_dir) / "lancedb_data")
+    try:
+        chunk = db.get_chunk_by_index(req.kb_id, req.doc_id, req.chunk_index)
+        if chunk is None:
+            return {"error": f"Chunk not found: doc={req.doc_id} index={req.chunk_index}"}
+        return {"chunk": chunk}
     finally:
         db.close()

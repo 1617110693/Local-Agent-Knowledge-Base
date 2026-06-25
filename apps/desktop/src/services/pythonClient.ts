@@ -204,3 +204,29 @@ export async function testRerank(params: {
 export async function cleanOrphans(): Promise<{ cleaned: number; details: string[] }> {
   return pythonFetch("/utils/clean-orphans", { method: "POST" });
 }
+
+// ── Get Chunk by Index ──
+
+export interface ChunkByIndex {
+  chunk_id: string;
+  doc_id: string;
+  kb_id: string;
+  doc_name: string;
+  content: string;
+  chunk_index: number;
+  page_number: number;
+  metadata: Record<string, unknown>;
+  prev_exists: boolean;
+  next_exists: boolean;
+}
+
+export async function getChunkByIndex(params: {
+  kb_id: string;
+  doc_id: string;
+  chunk_index: number;
+}): Promise<{ chunk: ChunkByIndex } | { error: string }> {
+  return pythonFetch("/get-chunk-by-index", {
+    method: "POST",
+    body: JSON.stringify(params),
+  });
+}

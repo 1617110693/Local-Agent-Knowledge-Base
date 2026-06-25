@@ -19,8 +19,8 @@ A local-first desktop knowledge base for AI agents. Built with **Tauri v2 + Reac
 ### Knowledge Management
 - **Multiple KBs** with independent indexes, dashboard statistics bar
 - **Display modes**: Card, Grid, Compact — with sorting and pin-to-top
-- **Hybrid search**: Dense vector + Chinese bigram keyword (FTS) + reranking, keyword-first
-- **Global search**: Search all KBs from the Dashboard in one query
+- **Hybrid search**: Dense vector + Chinese bigram keyword (FTS) + reranking, keyword-first; context window for neighboring chunks; jump to chunk by index
+- **Global search**: Search all KBs from the Dashboard with configurable search type and context window
 
 ### AI Model Integration (OpenAI-compatible)
 - **Embedding**: OpenAI, Ollama, vLLM, LiteLLM — any `/v1/embeddings` endpoint
@@ -30,7 +30,7 @@ A local-first desktop knowledge base for AI agents. Built with **Tauri v2 + Reac
 
 ### LLM Chat (RAG)
 - Built-in chat module with multi-conversation support
-- **Tool calling**: LLM actively searches KBs, lists documents, and reads full content as needed
+- **Tool calling**: LLM actively searches KBs, lists documents, reads full content, and fetches chunks by index; configurable default context window
 - **SSE streaming**: Token-by-token display with 50ms throttle for smooth rendering
 - **Multi-KB selection**: Search across multiple KBs with access isolation
 - **Citations**: Responses include `[N]` markers — click to preview source chunks
@@ -38,15 +38,16 @@ A local-first desktop knowledge base for AI agents. Built with **Tauri v2 + Reac
 - **Code block copy**, math rendering, auto-scroll toggle
 
 ### MCP Server
-13 tools for AI agents — single executable, requires the app running (or minimized to tray):
+14 tools for AI agents — single executable, requires the app running (or minimized to tray):
 
 | Tool | Description |
 |------|-------------|
-| `search_knowledge_base` | Hybrid search with reranking |
+| `search_knowledge_base` | Hybrid search with reranking, optional context window |
 | `list_knowledge_bases` | List all KBs with stats, detect orphaned data |
 | `list_documents` | List all documents in a KB with metadata |
 | `get_document` | Full document content |
 | `get_document_chunks` | Get all chunks of a document |
+| `get_chunk_by_index` | Fetch a single chunk by doc_id + chunk_index |
 | `create_knowledge_base` | Create a new KB |
 | `delete_knowledge_base` | Delete a KB and all its data |
 | `rename_knowledge_base` | Rename a KB and update description |

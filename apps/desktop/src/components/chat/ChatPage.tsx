@@ -43,6 +43,7 @@ export function ChatPage() {
   const [copiedMsgIdx, setCopiedMsgIdx] = useState<number | null>(null);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
   const [autoScroll, setAutoScroll] = useState(true);
+  const [contextWindow, setContextWindow] = useState(1);
   const [abortCtrl, setAbortCtrl] = useState<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -241,7 +242,7 @@ export function ChatPage() {
                 maxSearchResultChars: settings.max_search_result_chars || 2000,
                 maxDocumentChars: settings.max_document_chars || 30000,
                 maxChunkChars: settings.max_chunk_chars || 800,
-              }, selectedKbIds.length > 0 ? selectedKbIds : undefined);
+              }, selectedKbIds.length > 0 ? selectedKbIds : undefined, contextWindow);
               allSources = [...allSources, ...newSources];
               messages.push({
                 role: "tool",
@@ -342,6 +343,16 @@ export function ChatPage() {
       <div className="flex items-center gap-3 px-6 py-3 border-b shrink-0 bg-card/50">
         <MessageSquare className="w-5 h-5 text-primary" />
         <h2 className="font-semibold text-sm truncate flex-1">{conv.title || t("chat.newConversation")}</h2>
+
+        {/* Context window toggle */}
+        <label className="flex items-center gap-1 text-[11px] text-muted-foreground" title={t("chat.contextWindowHelp") || "Include neighboring chunks in search results for more context"}>
+          <span className="hidden sm:inline">{t("chat.contextWindow") || "Ctx"}</span>
+          <select value={contextWindow} onChange={(e) => setContextWindow(Number(e.target.value))} className="px-1.5 py-0.5 border rounded bg-background text-[11px]">
+            <option value="0">±0</option>
+            <option value="1">±1</option>
+            <option value="2">±2</option>
+          </select>
+        </label>
 
         {/* Multi-select KB dropdown */}
         <div className="relative">

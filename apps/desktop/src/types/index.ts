@@ -69,6 +69,19 @@ export interface ChatMessage {
   name?: string;
 }
 
+export interface NeighborChunk {
+  chunk_id: string;
+  content: string;
+  chunk_index: number;
+  page_number?: number;
+  metadata?: Record<string, unknown>;
+}
+
+export interface ChunkContext {
+  prev: NeighborChunk[];
+  next: NeighborChunk[];
+}
+
 export interface SearchResult {
   chunk_id: string;
   doc_id: string;
@@ -81,6 +94,7 @@ export interface SearchResult {
     chunk_index?: number;
     [key: string]: unknown;
   };
+  context?: ChunkContext;
 }
 
 export interface SearchRequest {
@@ -89,6 +103,7 @@ export interface SearchRequest {
   search_type: "hybrid" | "vector" | "fts";
   top_k: number;
   rerank: boolean;
+  context_window?: number;
   filters?: {
     doc_id?: string;
   };
@@ -100,6 +115,7 @@ export interface SearchAllRequest {
   search_type: "hybrid" | "vector" | "fts";
   top_k: number;
   rerank: boolean;
+  context_window?: number;
 }
 
 export interface AppSettings {
