@@ -292,8 +292,10 @@ def list_documents(kb_id: str) -> list[dict]:
 
 
 @mcp.tool
-def get_document(kb_id: str, doc_id: str, include_chunks: bool = False) -> dict:
-    """Get full document content with optional chunk details."""
+def get_document(kb_id: str, doc_id: str, include_chunks: bool = False, max_chars: int = 30000) -> dict:
+    """Get document content. Content is truncated if it exceeds max_chars (0 = no limit).
+
+    Prefer get_document_summary first to get an overview before loading full content."""
     doc_dir = Path(DATA_DIR) / f"kb_{kb_id}" / "docs" / doc_id
     if not doc_dir.exists():
         return {"error": f"Document not found: {doc_id}"}
@@ -311,11 +313,19 @@ def get_document(kb_id: str, doc_id: str, include_chunks: bool = False) -> dict:
         except (json.JSONDecodeError, OSError):
             pass
 
+    total_chars = len(content)
+    truncated = False
+    if max_chars > 0 and len(content) > max_chars:
+        content = content[:max_chars]
+        truncated = True
+
     result = {
         "doc_id": doc_id,
         "kb_id": kb_id,
         "name": meta.get("name", doc_id),
         "content": content,
+        "total_chars": total_chars,
+        "truncated": truncated,
         "metadata": meta,
     }
 
@@ -339,6 +349,76 @@ def get_document(kb_id: str, doc_id: str, include_chunks: bool = False) -> dict:
             db.close()
 
     return result
+
+
+@mcp.tool
+def get_document_summary(kb_id: str, doc_id: str) -> dict:
+    """Get a structured summary of a document WITHOUT loading full content.
+
+    Returns metadata, heading outline (table of contents), total chunk count,
+    and a preview of the first and last few chunks. Use this BEFORE get_document
+    to decide whether and how to load the full document."""
+    import re
+
+    doc_dir = Path(DATA_DIR) / f"kb_{kb_id}" / "docs" / doc_id
+    if not doc_dir.exists():
+        return {"error": f"Document not found: {doc_id}"}
+
+    # Metadata
+    meta = {}
+    meta_path = doc_dir / "metadata.json"
+    if meta_path.exists():
+        try:
+            meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    # Extract headings from markdown (table of contents)
+    headings = []
+    md_path = doc_dir / "full.md"
+    if md_path.exists():
+        heading_pattern = re.compile(r"^(#{1,6})\s+(.+)$", re.MULTILINE)
+        for m in heading_pattern.finditer(md_path.read_text(encoding="utf-8")):
+            headings.append({"level": len(m.group(1)), "text": m.group(2).strip()})
+
+    # Get first 3 and last 2 chunks as preview
+    db = _get_db()
+    try:
+        table = db.get_table(kb_id)
+        if table is not None:
+            all_chunks = table.search().where(f"doc_id = '{doc_id}'").to_list()
+            all_chunks.sort(key=lambda c: c.get("chunk_index", 0))
+            total_chunks = len(all_chunks)
+
+            def _format(c):
+                return {
+                    "chunk_index": c.get("chunk_index", 0),
+                    "content": c.get("content", ""),
+                    "page_number": c.get("page_number", 0),
+                }
+
+            preview_begin = [_format(c) for c in all_chunks[:3]]
+            preview_end = [_format(c) for c in all_chunks[-2:]] if total_chunks > 3 else []
+        else:
+            total_chunks = 0
+            preview_begin = []
+            preview_end = []
+    finally:
+        db.close()
+
+    return {
+        "doc_id": doc_id,
+        "kb_id": kb_id,
+        "name": meta.get("name", doc_id),
+        "file_type": meta.get("file_type", ""),
+        "file_size": meta.get("file_size", 0),
+        "chunk_count": meta.get("chunk_count", total_chunks),
+        "headings": headings,
+        "total_headings": len(headings),
+        "preview_begin_chunks": preview_begin,
+        "preview_end_chunks": preview_end,
+        "created_at": meta.get("created_at", ""),
+    }
 
 
 @mcp.tool
