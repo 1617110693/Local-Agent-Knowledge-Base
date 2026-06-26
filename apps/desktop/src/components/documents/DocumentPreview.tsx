@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useRef, useCallback } from "react";
+import { useEffect, useState, useMemo, useRef, useCallback, useLayoutEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { MarkdownRenderer } from "../common/MarkdownRenderer";
 import { getDocumentContent, saveDocumentContent, saveDocumentChunks } from "../../services/tauriBridge";
@@ -232,16 +232,15 @@ function DocView({ content, startCharMap, chunkIdx }: { content: string; startCh
   // Reset on chunkIdx change
   useEffect(() => { scrolledRef.current = false; }, [chunkIdx]);
 
-  // Scroll to chunk: for multi-section docs, scroll target section into view.
-  // For single-section docs, scroll to top of container.
-  // Uses direct DOM scroll (no text search) — text search fails on
-  // LaTeX math because KaTeX transforms the DOM content during rendering.
-  // targetReady: only true when we have data and the target section is rendered
+  // Scroll to chunk: for multi-section docs, scroll target section into view
+  // with position estimated via byte-offset ratio within the section.
+  // Uses useLayoutEffect to scroll BEFORE paint (no flash of unscrolled content).
+  // Uses DOM scroll (no text search) — text search fails on LaTeX after KaTeX render.
   const targetReady =
     targetSecIdx != null
       ? rendered.has(targetSecIdx)
       : (chunkIdx != null && sections.length <= 1 && chunkEntries.length > 0);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!targetReady || scrolledRef.current) return;
 
     const container = containerRef.current;
@@ -254,40 +253,71 @@ function DocView({ content, startCharMap, chunkIdx }: { content: string; startCh
     }
 
     if (targetSecIdx != null) {
-      // Multi-section: scroll the target section element into view
+      // Multi-section: scroll target section element into view
       const sectionEl = container.querySelector(`[data-section-idx="${targetSecIdx}"]`) as HTMLElement | null;
       if (sectionEl) {
         scrolledRef.current = true;
         sectionEl.style.backgroundColor = "#fef3c7";
         sectionEl.style.transition = "background-color 0.5s";
         highlightRef.current = sectionEl;
-        setTimeout(() => {
+        const tid = setTimeout(() => {
           if (highlightRef.current === sectionEl) {
             sectionEl.style.backgroundColor = "";
             highlightRef.current = null;
           }
         }, 2500);
+
+        // Estimate chunk position within section via byte-offset ratio.
+        // Not pixel-perfect (markdown/KaTeX changes text length) but much
+        // better than always scrolling to section start.
+        const entry = chunkEntries.find(e => e.chunkIndex === chunkIdx);
+        const secStart = sectionOffsets[targetSecIdx] ?? 0;
+        const secEnd = targetSecIdx + 1 < sectionOffsets.length
+          ? sectionOffsets[targetSecIdx + 1]
+          : content.length;
+        const secLen = secEnd - secStart;
+        const ratio = secLen > 0 && entry
+          ? Math.max(0, Math.min(1, (entry.startChar - secStart) / secLen))
+          : 0;
+
         const containerRect = container.getBoundingClientRect();
         const sectionRect = sectionEl.getBoundingClientRect();
-        const offset = sectionRect.top - containerRect.top - containerRect.height * 0.25;
+        const chunkTop = sectionRect.top + sectionRect.height * ratio;
+        const offset = chunkTop - containerRect.top - containerRect.height * 0.25;
         container.scrollTo({ top: container.scrollTop + offset, behavior: "instant" });
+
+        return () => {
+          clearTimeout(tid);
+          scrolledRef.current = false;
+          if (highlightRef.current === sectionEl) {
+            sectionEl.style.backgroundColor = "";
+            highlightRef.current = null;
+          }
+        };
       }
     } else {
       // Single section: just scroll to top
       scrolledRef.current = true;
       container.scrollTo({ top: 0, behavior: "instant" });
-      // Highlight the whole content area briefly
       const inner = container.firstElementChild as HTMLElement | null;
       if (inner) {
         inner.style.backgroundColor = "#fef3c7";
         inner.style.transition = "background-color 0.5s";
         highlightRef.current = inner;
-        setTimeout(() => {
+        const tid = setTimeout(() => {
           if (highlightRef.current === inner) {
             inner.style.backgroundColor = "";
             highlightRef.current = null;
           }
         }, 2500);
+        return () => {
+          clearTimeout(tid);
+          scrolledRef.current = false;
+          if (highlightRef.current === inner) {
+            inner.style.backgroundColor = "";
+            highlightRef.current = null;
+          }
+        };
       }
     }
   }, [targetReady, chunkIdx, targetSecIdx]);

@@ -12,8 +12,9 @@ A local-first desktop knowledge base for AI agents. Built with **Tauri v2 + Reac
 ### Document Management
 - **Multi-format**: PDF, DOCX, PPTX, XLSX, images, HTML, Markdown, plain text
 - **Auto pipeline**: Upload → MinerU Precise parse → chunk → embed → index — fully automatic
-- **File manager**: Explorer-style with folder tree, rename, move, delete
-- **Markdown preview**: Full rendering with LaTeX math (KaTeX), HTML tables, and lazy loading
+- **Split documents**: Large PDFs (>200 pages) auto-split into manageable parts, grouped under parent in file tree
+- **File manager**: Explorer-style with folder tree, rename, move, delete, open original file
+- **Markdown preview**: Full rendering with LaTeX math (KaTeX), HTML table math, section lazy loading, chunk-level scroll navigation
 - **Document editing**: Edit parsed Markdown, auto re-index on save
 
 ### Knowledge Management
@@ -33,7 +34,7 @@ A local-first desktop knowledge base for AI agents. Built with **Tauri v2 + Reac
 - **Tool calling**: LLM actively searches KBs, lists documents, reads full content, and fetches chunks by index; configurable default context window
 - **SSE streaming**: Token-by-token display with 50ms throttle for smooth rendering
 - **Multi-KB selection**: Search across multiple KBs with access isolation
-- **Citations**: Responses include `[N]` markers — click to preview source chunks
+- **Citations**: Inline `[N]` badges and `[M-N]` range badges — click to preview source chunks, "View full document" navigates to chunk position
 - **Conversation actions**: Rename, delete, regenerate, copy messages
 - **Code block copy**, math rendering, auto-scroll toggle
 
