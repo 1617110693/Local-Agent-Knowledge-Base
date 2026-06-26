@@ -2,9 +2,10 @@ import { useEffect, useState, useMemo, useRef, useCallback, useLayoutEffect } fr
 import { useParams, useNavigate } from "react-router-dom";
 import { MarkdownRenderer } from "../common/MarkdownRenderer";
 import { getDocumentContent, saveDocumentContent, saveDocumentChunks } from "../../services/tauriBridge";
-import { indexDocument, getChunkRange } from "../../services/pythonClient";
+import { indexDocument, getChunkRange, searchDocument } from "../../services/pythonClient";
 import { useI18n } from "../../i18n";
-import { FileText, Loader2, ArrowLeft, Pencil, Check, X } from "lucide-react";
+import { FileText, Loader2, ArrowLeft, Pencil, Check, X, Search, XCircle } from "lucide-react";
+import type { SearchResult } from "../../types";
 
 /** Split into ~3000-char sections */
 function splitSections(content: string): string[] {
@@ -33,6 +34,10 @@ export function DocumentPreview() {
   const [editContent, setEditContent] = useState("");
   const [saving, setSaving] = useState(false);
   const [editError, setEditError] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<SearchResult[] | null>(null);
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState("");
 
   const chunkIdx = (() => {
     const v = new URLSearchParams(window.location.search).get("ci");
@@ -110,6 +115,72 @@ export function DocumentPreview() {
       </div>
       {editError && <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 mb-4">{editError}</div>}
       {editing && <p className="text-xs text-muted-foreground mb-3">{t("docs.editHint")}</p>}
+
+      {/* Document Search Bar */}
+      {!editing && (
+        <div className="mb-4">
+          <form onSubmit={async (e) => {
+            e.preventDefault();
+            if (!kbId || !docId || !searchQuery.trim()) return;
+            setSearching(true); setSearchError(""); setSearchResults(null);
+            try {
+              const r = await searchDocument({ kb_id: kbId, doc_id: docId, query: searchQuery.trim() });
+              setSearchResults(r.results);
+            } catch (err) { setSearchError(String(err)); }
+            setSearching(false);
+          }}>
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <input type="text" value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder={t("docs.searchPlaceholder")}
+                  className="w-full pl-8 pr-8 py-2 text-sm border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-primary" />
+                {searchQuery && (
+                  <button type="button" onClick={() => { setSearchQuery(""); setSearchResults(null); }}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                    <XCircle className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+              <button type="submit" disabled={searching || !searchQuery.trim()}
+                className="px-4 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-lg hover:opacity-90 disabled:opacity-50">
+                {searching ? <Loader2 className="w-4 h-4 animate-spin" /> : t("search.searchBtn")}
+              </button>
+            </div>
+          </form>
+          {searchError && <p className="text-xs text-red-500 mt-1">{searchError}</p>}
+          {searchResults && (
+            <div className="mt-2 border rounded-lg divide-y max-h-72 overflow-y-auto">
+              {searchResults.length === 0 ? (
+                <p className="p-3 text-sm text-muted-foreground text-center">{t("search.noResults")}</p>
+              ) : (
+                searchResults.map((r, i) => (
+                  <button key={i} onClick={() => {
+                    const ci = r.metadata?.chunk_index;
+                    if (ci != null) {
+                      setSearchResults(null);
+                      setSearchQuery("");
+                      navigate(`/kb/${kbId}/documents/${docId}?ci=${ci}`);
+                    }
+                  }}
+                  className="block w-full text-left p-3 hover:bg-muted transition-colors">
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <span className="text-xs font-mono text-muted-foreground shrink-0">
+                        {t("search.chunkLabel", { n: r.metadata?.chunk_index ?? "?" })}{(r.metadata?.page ?? 0) > 0 ? ` · ${t("search.page")} ${r.metadata.page}` : ""}
+                      </span>
+                      <span className="text-xs font-mono text-primary">{(r.score * 100).toFixed(0)}%</span>
+                    </div>
+                    <div className="text-xs prose prose-sm max-w-none dark:prose-invert line-clamp-3 [&_p]:my-0 [&_pre]:hidden [&_table]:hidden [&_img]:hidden">
+                      <MarkdownRenderer>{r.content.slice(0, 400)}</MarkdownRenderer>
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {editing ? (
         <textarea value={editContent} onChange={e => setEditContent(e.target.value)}

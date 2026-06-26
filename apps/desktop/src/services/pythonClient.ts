@@ -57,6 +57,15 @@ export async function searchAll(
   });
 }
 
+export async function searchDocument(
+  req: { kb_id: string; doc_id: string; query: string; search_type?: string; top_k?: number; rerank?: boolean; context_window?: number }
+): Promise<{ results: SearchResult[]; total: number; search_time_ms: number }> {
+  return pythonFetch("/search-document", {
+    method: "POST",
+    body: JSON.stringify(req),
+  });
+}
+
 // ── Index Document ──
 
 export async function indexDocument(params: {

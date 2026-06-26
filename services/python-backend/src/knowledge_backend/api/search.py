@@ -87,6 +87,78 @@ def search(req: SearchRequest):
         db.close()
 
 
+class SearchDocumentRequest(BaseModel):
+    kb_id: str
+    doc_id: str
+    query: str
+    search_type: str = "hybrid"
+    top_k: int = 10
+    rerank: bool = True
+    context_window: int = 0
+
+
+@router.post("/search-document")
+def search_document(req: SearchDocumentRequest):
+    """Search within a single document."""
+    from fastapi import HTTPException
+    config = get_config()
+    db = LanceDBManager(Path(config.knowledge_base_data_dir) / "lancedb_data")
+
+    try:
+        start = time.time()
+
+        embedder = OpenAICompatibleEmbedder(
+            config.embedding_api_base,
+            config.embedding_api_key,
+            config.embedding_model,
+        )
+        query_vector = embedder.embed_single(req.query)
+        embedder.close()
+
+        fetch_k = req.top_k * 3 if req.rerank else req.top_k
+
+        results = db.search(
+            kb_id=req.kb_id,
+            query_vector=query_vector,
+            query_text=req.query,
+            search_type=req.search_type,
+            top_k=fetch_k,
+            doc_id_filter=req.doc_id,
+        )
+
+        if req.rerank and results and config.rerank_api_key:
+            try:
+                reranker = OpenAICompatibleReranker(
+                    config.rerank_api_base,
+                    config.rerank_api_key,
+                    config.rerank_model,
+                )
+                documents = [r["content"] for r in results]
+                reranked = reranker.rerank(req.query, documents, top_n=req.top_k)
+                reranker.close()
+
+                new_results = []
+                for rr in reranked[: req.top_k]:
+                    if rr.index < len(results):
+                        r = results[rr.index]
+                        if len(r.get("content", "").strip()) >= 20:
+                            r["score"] = rr.score
+                            new_results.append(r)
+                results = new_results
+            except Exception:
+                results = [r for r in results[: req.top_k] if len(r.get("content", "").strip()) >= 20]
+        else:
+            results = [r for r in results[: req.top_k] if len(r.get("content", "").strip()) >= 20]
+
+        if req.context_window > 0 and results:
+            results = db.enrich_with_context(results, req.kb_id, req.context_window)
+
+        elapsed = int((time.time() - start) * 1000)
+        return {"results": results, "total": len(results), "search_time_ms": elapsed}
+    finally:
+        db.close()
+
+
 class SearchAllRequest(BaseModel):
     kb_ids: Optional[list[str]] = None
     query: str

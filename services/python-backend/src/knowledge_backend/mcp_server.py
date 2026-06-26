@@ -203,6 +203,31 @@ def search_all_knowledge_bases(
 
 
 @mcp.tool
+def search_document(
+    query: str,
+    kb_id: str,
+    doc_id: str,
+    top_k: int = 10,
+    search_type: Literal["hybrid", "vector", "fts"] = "hybrid",
+    rerank: bool = True,
+    context_window: int = 0,
+) -> list[dict]:
+    """Search within a SINGLE document. Use when you already know which document
+    contains the answer and want precise results without KB-wide noise.
+
+    This is a focused version of search_knowledge_base scoped to one doc_id."""
+    return search_knowledge_base(
+        query=query,
+        kb_id=kb_id,
+        top_k=top_k,
+        search_type=search_type,
+        rerank=rerank,
+        doc_id_filter=doc_id,
+        context_window=context_window,
+    )
+
+
+@mcp.tool
 def list_knowledge_bases() -> list[dict]:
     """List all knowledge bases with document and chunk counts, detecting orphaned data."""
     registry_path = Path(DATA_DIR) / "knowledge_bases.json"

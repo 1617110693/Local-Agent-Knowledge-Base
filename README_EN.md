@@ -39,12 +39,13 @@ A local-first desktop knowledge base for AI agents. Built with **Tauri v2 + Reac
 - **Code block copy**, math rendering, auto-scroll toggle
 
 ### MCP Server
-17 tools for AI agents — single executable, requires the app running (or minimized to tray):
+18 tools for AI agents — single executable, requires the app running (or minimized to tray):
 
 | Tool | Description |
 |------|-------------|
 | `search_knowledge_base` | Hybrid search with reranking, optional context window |
 | `search_all_knowledge_bases` | Global search across all KBs without specifying a target |
+| `search_document` | Search within a single document — precise, no KB-wide noise |
 | `list_knowledge_bases` | List all KBs with stats, detect orphaned data |
 | `list_documents` | List all documents in a KB with metadata |
 | `get_document` | Document content with `max_chars` truncation safeguard |

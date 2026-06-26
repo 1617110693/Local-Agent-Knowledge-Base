@@ -96,6 +96,7 @@ export const translations = {
   "docs.save": { en: "Save", "zh-CN": "保存" },
   "docs.editMarkdown": { en: "Edit Markdown", "zh-CN": "编辑 Markdown" },
   "docs.editHint": { en: "Editing will trigger re-indexing. Large documents may take a moment.", "zh-CN": "编辑后将触发重新索引。大文档可能需要一些时间。" },
+  "docs.searchPlaceholder": { en: "Search in this document...", "zh-CN": "在本文档中搜索…" },
   "docs.reindexAll": { en: "Re-index All", "zh-CN": "一键重新索引" },
   "docs.embeddingModel": { en: "Embedding: {model}", "zh-CN": "嵌入模型: {model}" },
   "docs.uploadFilter": { en: "Documents", "zh-CN": "文档文件" },
@@ -140,6 +141,8 @@ export const translations = {
   "search.searchAllPlaceholder": { en: "Search across all knowledge bases...", "zh-CN": "搜索所有知识库…" },
   "search.searchAllBtn": { en: "Search All", "zh-CN": "全局搜索" },
   "search.searchAllTitle": { en: "Global Search Results", "zh-CN": "全局搜索结果" },
+  "search.noResults": { en: "No results found", "zh-CN": "未找到结果" },
+  "search.chunkLabel": { en: "Chunk {n}", "zh-CN": "第 {n} 块" },
 
   // Chat
   "chat.title": { en: "RAG Chat", "zh-CN": "RAG 对话" },
