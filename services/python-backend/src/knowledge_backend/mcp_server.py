@@ -683,8 +683,6 @@ def add_document(
                 "content": chunk.content,
                 "chunk_index": i,
                 "page_number": meta.get("page", 0),
-                "page_start": meta.get("page_start", meta.get("page", 0)),
-                "page_end": meta.get("page_end", meta.get("page", 0)),
                 "chunk_strategy": "recursive",
                 "metadata_json": json.dumps(meta, ensure_ascii=False),
                 "vector": vec,

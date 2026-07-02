@@ -471,8 +471,9 @@ def _download_and_extract(http: httpx.Client, zip_url: str) -> ParseResult:
             name_lower = name.lower()
             if name_lower.endswith("full.md") or name_lower == "full.md":
                 markdown = zf.read(name).decode("utf-8")
-            elif name_lower.endswith(".json") and "layout" not in name_lower and "middle" not in name_lower:
-                # Pick up the main result JSON (contains pdf_info), skip layout/middle files
+            elif name_lower.endswith(".json"):
+                # The main result JSON is layout.json (contains pdf_info).
+                # Also pick up any other .json that has pdf_info.
                 try:
                     raw = zf.read(name).decode("utf-8")
                     if '"pdf_info"' in raw:

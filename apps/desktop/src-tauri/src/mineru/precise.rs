@@ -215,6 +215,7 @@ async fn download_and_extract_markdown(
     let mut markdown: Option<String> = None;
     let mut json_content: Option<String> = None;
 
+    eprintln!("[SKB] MinerU ZIP contains {} entries:", archive.len());
     for i in 0..archive.len() {
         let mut file = archive
             .by_index(i)
@@ -222,21 +223,33 @@ async fn download_and_extract_markdown(
 
         let name = file.name().to_string();
         let name_lower = name.to_lowercase();
+        let size = file.size();
+        eprintln!("[SKB]   ZIP[{i}]: {name} ({size} bytes)");
 
         if name_lower.ends_with("full.md") || name_lower == "full.md" {
             let mut content = String::new();
             use std::io::Read;
             file.read_to_string(&mut content)
                 .map_err(|e| AppError::MinerU(format!("Failed to read markdown: {}", e)))?;
+            let chars = content.len();
             markdown = Some(content);
-        } else if name_lower.ends_with(".json") && !name_lower.contains("layout") && !name_lower.contains("middle") {
-            // Pick up the main result JSON (has pdf_info), skip layout/middle JSONs
+            eprintln!("[SKB]   -> extracted full.md ({chars} chars)");
+        } else if name_lower.ends_with(".json") {
+            // The main result JSON is layout.json (contains pdf_info).
+            // Also accept any other .json that has pdf_info.
             let mut content = String::new();
             use std::io::Read;
-            if file.read_to_string(&mut content).is_ok() {
-                // Verify it's the right JSON — must contain pdf_info
-                if content.contains("\"pdf_info\"") {
-                    json_content = Some(content);
+            match file.read_to_string(&mut content) {
+                Ok(_) => {
+                    let has_pdf_info = content.contains("\"pdf_info\"");
+                    let is_layout = name_lower.contains("layout");
+                    eprintln!("[SKB]   -> read JSON ({}.chars), is_layout={is_layout}, has_pdf_info={has_pdf_info}", content.len());
+                    if has_pdf_info {
+                        json_content = Some(content);
+                    }
+                }
+                Err(e) => {
+                    eprintln!("[SKB]   -> failed to read JSON: {e}");
                 }
             }
         }

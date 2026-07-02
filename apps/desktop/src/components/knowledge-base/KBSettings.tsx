@@ -707,6 +707,13 @@ export function KBSettings() {
                         </div>
                       )}
                       <button onClick={(e) => { e.stopPropagation(); startDocRename(doc); }} className="p-0.5 hover:bg-muted rounded text-muted-foreground" title={t("docs.rename")}><Pencil className="w-3 h-3" /></button>
+                      <button
+                        onClick={async () => {
+                          if (!kbId) return;
+                          const { revealDocumentInExplorer } = await import("../../services/tauriBridge");
+                          await revealDocumentInExplorer(kbId, doc.id);
+                        }}
+                        className="p-0.5 hover:bg-muted rounded text-muted-foreground" title={t("docs.openLocation")}><FolderSearch className="w-3 h-3" /></button>
                       <button onClick={() => handleOpenFile(doc)} className="p-0.5 hover:bg-muted rounded text-muted-foreground" title={t("docs.openFile")}><ExternalLink className="w-3 h-3" /></button>
                       <button
                         onClick={() => setDeleteTarget({ docId: doc.id, docName: doc.name })}
@@ -744,6 +751,13 @@ export function KBSettings() {
                         <div className="flex items-center gap-0.5 ml-2 shrink-0">
                           {pIsIndexed && <button onClick={() => handleReindexDoc(part)} className="p-0.5 hover:bg-amber-50 rounded text-muted-foreground hover:text-amber-600" title={t("docs.reindex")}><RefreshCw className="w-3 h-3" /></button>}
                           <button onClick={(e) => { e.stopPropagation(); startDocRename(part); }} className="p-0.5 hover:bg-muted rounded text-muted-foreground" title={t("docs.rename")}><Pencil className="w-3 h-3" /></button>
+                          <button
+                            onClick={async () => {
+                              if (!kbId) return;
+                              const { revealDocumentInExplorer } = await import("../../services/tauriBridge");
+                              await revealDocumentInExplorer(kbId, part.id);
+                            }}
+                            className="p-0.5 hover:bg-muted rounded text-muted-foreground" title={t("docs.openLocation")}><FolderSearch className="w-3 h-3" /></button>
                           <button onClick={() => handleOpenFile(part)} className="p-0.5 hover:bg-muted rounded text-muted-foreground" title={t("docs.openFile")}><ExternalLink className="w-3 h-3" /></button>
                           <button onClick={() => setDeleteTarget({ docId: part.id, docName: part.name })} className="p-0.5 hover:bg-red-50 rounded-md text-muted-foreground hover:text-red-500" title={t("docs.delete")}><Trash2 className="w-3 h-3" /></button>
                         </div>
