@@ -30,6 +30,9 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "resources": [
+      "llama-b9821-bin-win-cpu-x64/*"
+    ],
     "externalBin": [
       "binaries/knowledge-backend"
     ],

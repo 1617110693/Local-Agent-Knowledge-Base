@@ -9,7 +9,8 @@ import { executeToolCall } from "../../services/toolExecutor";
 import { Send, Loader2, Trash2, MessageSquare, User, Bot, Layers, FileText, X, ChevronDown, ChevronUp, Search, Copy, Check, RefreshCw, Square, ArrowDown, ArrowDownToLine, Eye } from "lucide-react";
 import { MarkdownRenderer } from "../common/MarkdownRenderer";
 import { ChunkDetailDialog } from "../common/ChunkDetailDialog";
-import { getChunkByIndex } from "../../services/pythonClient";
+import { getChunkByIndex, getChunkRange } from "../../services/pythonClient";
+import { listDocuments } from "../../services/tauriBridge";
 import type { ChatMessage, SearchResult, ToolCall } from "../../types";
 
 /** Normalize LaTeX math delimiters so remark-math can process them. */
@@ -348,15 +349,57 @@ HOW TO ANSWER QUESTIONS (RAG-first workflow):
   }
 
   const navigatePreviewChunk = (delta: number) => {
-    if (!previewChunk?.metadata?.chunk_index || !previewChunk?.kb_id || !previewChunk?.doc_id) return;
-    const ci = previewChunk.metadata.chunk_index as number;
-    getChunkByIndex({ kb_id: previewChunk.kb_id, doc_id: previewChunk.doc_id, chunk_index: ci + delta }).then(res => {
-      if ("error" in res) return;
-      const c = res.chunk;
-      setPreviewChunk({ ...previewChunk,
-        content: c.content, chunk_id: c.chunk_id,
-        metadata: { ...previewChunk.metadata, chunk_index: c.chunk_index, page: c.page_number },
-      });
+    const pc = previewChunk;
+    if (pc == null || !pc.kb_id || !pc.doc_id) return;
+    if (pc.metadata?.chunk_index == null) return;
+    const ci = pc.metadata.chunk_index as number;
+    const kb = pc.kb_id;
+    const did = pc.doc_id;
+    getChunkByIndex({ kb_id: kb, doc_id: did, chunk_index: ci + delta }).then(res => {
+      if (!("error" in res)) {
+        const c = res.chunk;
+        setPreviewChunk({ ...pc,
+          content: c.content, chunk_id: c.chunk_id,
+          metadata: { ...pc.metadata, chunk_index: c.chunk_index, page: c.page_number },
+        });
+        return;
+      }
+      // Cross-part navigation for split documents
+      listDocuments(kb).then(docs => {
+        const curParent = (docs.find(d => d.id === did) as any)?.parent_doc_id;
+        const siblings = docs
+          .filter(d => d.id !== did)
+          .filter(d => (curParent && (d as any).parent_doc_id === curParent) || (d as any).parent_doc_id === did)
+          .sort((a, b) => a.name.localeCompare(b.name));
+        if (!siblings.length) return;
+        const curIdx = siblings.findIndex(d => d.name.localeCompare(pc.doc_name!) > 0);
+        const target = delta > 0
+          ? (curIdx >= 0 ? siblings[curIdx] : siblings[0])
+          : (curIdx > 0 ? siblings[curIdx - 1] : siblings[siblings.length - 1]);
+        if (!target) return;
+        if (delta > 0) {
+          getChunkByIndex({ kb_id: kb, doc_id: target.id, chunk_index: 0 }).then(r2 => {
+            if ("error" in r2) return;
+            const c2 = r2.chunk;
+            setPreviewChunk({
+              ...pc,
+              content: c2.content, chunk_id: c2.chunk_id, doc_id: c2.doc_id,
+              doc_name: c2.doc_name, metadata: { ...pc.metadata, chunk_index: c2.chunk_index, page: c2.page_number },
+            });
+          }).catch(() => {});
+        } else {
+          getChunkRange({ kb_id: kb, doc_id: target.id, start: 0, end: 100000 }).then(r2 => {
+            const chunks = r2.chunks || [];
+            if (!chunks.length) return;
+            const last = chunks.reduce((a, b) => a.chunk_index > b.chunk_index ? a : b);
+            setPreviewChunk({
+              ...pc,
+              content: last.content, chunk_id: last.chunk_id, doc_id: last.doc_id,
+              doc_name: last.doc_name, metadata: { ...pc.metadata, chunk_index: last.chunk_index, page: last.page_number },
+            });
+          }).catch(() => {});
+        }
+      }).catch(() => {});
     }).catch(() => {});
   };
 
@@ -581,12 +624,12 @@ HOW TO ANSWER QUESTIONS (RAG-first workflow):
             score: previewChunk.score,
           }}
           onClose={() => setPreviewChunk(null)}
-          onPrev={previewChunk.metadata?.chunk_index != null && (previewChunk.metadata.chunk_index as number) > 0
+          onPrev={previewChunk.metadata?.chunk_index != null && previewChunk.doc_id
             ? () => navigatePreviewChunk(-1) : undefined}
-          onNext={previewChunk.metadata?.chunk_index != null
+          onNext={previewChunk.metadata?.chunk_index != null && previewChunk.doc_id
             ? () => navigatePreviewChunk(1) : undefined}
-          hasPrev={!!(previewChunk.metadata?.chunk_index != null && (previewChunk.metadata.chunk_index as number) > 0)}
-          hasNext={!!(previewChunk.metadata?.chunk_index != null)}
+          hasPrev={!!(previewChunk.metadata?.chunk_index != null && previewChunk.doc_id)}
+          hasNext={!!(previewChunk.metadata?.chunk_index != null && previewChunk.doc_id)}
         />
       )}
     </div>

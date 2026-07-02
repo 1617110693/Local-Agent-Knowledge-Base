@@ -33,12 +33,19 @@ def _find_llama_server() -> Optional[Path]:
     project_root = Path(__file__).resolve().parents[4]
     exe_dir = Path(sys.executable).parent if hasattr(sys, "executable") else None
     for c in [
-        project_root / "llama-b9821-bin-win-cpu-x64" / "llama-server.exe",
-        project_root / "llama-b9821-bin-win-cpu-x64" / "llama-server",
+        # Dev mode: inside src-tauri (moved from project root)
+        project_root / "apps/desktop/src-tauri/llama-b9821-bin-win-cpu-x64" / "llama-server.exe",
+        project_root / "apps/desktop/src-tauri/llama-b9821-bin-win-cpu-x64" / "llama-server",
+        # Production: Tauri resources bundle into install dir alongside exe
+        exe_dir / "llama-b9821-bin-win-cpu-x64" / "llama-server.exe" if exe_dir else None,
+        exe_dir / "llama-b9821-bin-win-cpu-x64" / "llama-server" if exe_dir else None,
         exe_dir / "llama-server.exe" if exe_dir else None,
         exe_dir / "llama-server" if exe_dir else None,
+        # CWD fallback (project root or src-tauri)
         Path("llama-b9821-bin-win-cpu-x64/llama-server.exe"),
         Path("llama-b9821-bin-win-cpu-x64/llama-server"),
+        Path("apps/desktop/src-tauri/llama-b9821-bin-win-cpu-x64/llama-server.exe"),
+        Path("apps/desktop/src-tauri/llama-b9821-bin-win-cpu-x64/llama-server"),
     ]:
         if c and c.exists():
             return c

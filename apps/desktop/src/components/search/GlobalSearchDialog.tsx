@@ -1,5 +1,6 @@
 import { useState, useRef } from "react";
-import { searchAll, getChunkByIndex } from "../../services/pythonClient";
+import { searchAll, getChunkByIndex, getChunkRange } from "../../services/pythonClient";
+import { listDocuments } from "../../services/tauriBridge";
 import { useSettingsStore } from "../../stores/useSettingsStore";
 import { useI18n } from "../../i18n";
 import { Search, Loader2, FileText, X, Globe, ChevronDown, ChevronUp } from "lucide-react";
@@ -34,12 +35,48 @@ export function GlobalSearchDialog({ open, onClose }: Props) {
     const ci = chunk.metadata?.chunk_index as number | undefined;
     if (ci == null || !chunk.doc_id || !chunk.kb_id) return;
     getChunkByIndex({ kb_id: chunk.kb_id, doc_id: chunk.doc_id, chunk_index: ci + delta }).then(res => {
-      if ("error" in res) return;
-      const c = res.chunk;
-      setSelectedChunk({
-        content: c.content, doc_name: c.doc_name, doc_id: c.doc_id, kb_id: c.kb_id,
-        score: 0, metadata: { chunk_index: c.chunk_index, page: c.page_number },
-      } as SearchResult);
+      if (!("error" in res)) {
+        const c = res.chunk;
+        setSelectedChunk({
+          content: c.content, doc_name: c.doc_name, doc_id: c.doc_id, kb_id: c.kb_id,
+          score: 0, metadata: { chunk_index: c.chunk_index, page: c.page_number },
+        } as SearchResult);
+        return;
+      }
+      // Cross-part navigation for split documents
+      listDocuments(chunk.kb_id).then(docs => {
+        const curParent = (docs.find(d => d.id === chunk.doc_id) as any)?.parent_doc_id;
+        const siblings = docs
+          .filter(d => d.id !== chunk.doc_id)
+          .filter(d => (curParent && (d as any).parent_doc_id === curParent) || (d as any).parent_doc_id === chunk.doc_id)
+          .sort((a, b) => a.name.localeCompare(b.name));
+        if (!siblings.length) return;
+        const curIdx = siblings.findIndex(d => d.name.localeCompare(chunk.doc_name!) > 0);
+        const target = delta > 0
+          ? (curIdx >= 0 ? siblings[curIdx] : siblings[0])
+          : (curIdx > 0 ? siblings[curIdx - 1] : siblings[siblings.length - 1]);
+        if (!target) return;
+        if (delta > 0) {
+          getChunkByIndex({ kb_id: chunk.kb_id, doc_id: target.id, chunk_index: 0 }).then(r2 => {
+            if ("error" in r2) return;
+            const c2 = r2.chunk;
+            setSelectedChunk({
+              content: c2.content, doc_name: c2.doc_name, doc_id: c2.doc_id, kb_id: c2.kb_id,
+              score: 0, metadata: { chunk_index: c2.chunk_index, page: c2.page_number },
+            } as SearchResult);
+          }).catch(() => {});
+        } else {
+          getChunkRange({ kb_id: chunk.kb_id, doc_id: target.id, start: 0, end: 100000 }).then(r2 => {
+            const chunks = r2.chunks || [];
+            if (!chunks.length) return;
+            const last = chunks.reduce((a, b) => a.chunk_index > b.chunk_index ? a : b);
+            setSelectedChunk({
+              content: last.content, doc_name: last.doc_name, doc_id: last.doc_id, kb_id: last.kb_id,
+              score: 0, metadata: { chunk_index: last.chunk_index, page: last.page_number },
+            } as SearchResult);
+          }).catch(() => {});
+        }
+      }).catch(() => {});
     }).catch(() => {});
   };
 
@@ -203,11 +240,11 @@ export function GlobalSearchDialog({ open, onClose }: Props) {
             score: selectedChunk.score,
           }}
           onClose={() => setSelectedChunk(null)}
-          onPrev={selectedChunk.metadata?.chunk_index != null && selectedChunk.metadata.chunk_index > 0
+          onPrev={selectedChunk.metadata?.chunk_index != null && selectedChunk.doc_id
             ? () => navigateAdjacentChunk(selectedChunk, -1) : undefined}
           onNext={selectedChunk.metadata?.chunk_index != null && selectedChunk.doc_id
             ? () => navigateAdjacentChunk(selectedChunk, 1) : undefined}
-          hasPrev={!!(selectedChunk.metadata?.chunk_index != null && selectedChunk.metadata.chunk_index > 0)}
+          hasPrev={!!(selectedChunk.metadata?.chunk_index != null && selectedChunk.doc_id)}
           hasNext={!!(selectedChunk.metadata?.chunk_index != null && selectedChunk.doc_id)}
         />
       )}

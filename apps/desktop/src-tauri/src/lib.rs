@@ -12,6 +12,7 @@ use storage::file_store::FileStore;
 use tauri::Manager;
 use tauri::menu::{MenuBuilder, MenuItemBuilder};
 use tauri::tray::{TrayIconBuilder, MouseButton, MouseButtonState, TrayIconEvent};
+use std::net::TcpListener;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
@@ -31,6 +32,16 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .setup(|app| {
+            // Single-instance: bind a singleton port. If already bound,
+            // another instance is running — exit quietly.
+            let singleton_port: u16 = 17391;
+            let _singleton = match TcpListener::bind(("127.0.0.1", singleton_port)) {
+                Ok(listener) => listener,
+                Err(_) => {
+                    std::process::exit(0);
+                }
+            };
+
             let home = std::env::var("HOME")
                 .or_else(|_| std::env::var("USERPROFILE"))
                 .expect("Failed to get home directory");

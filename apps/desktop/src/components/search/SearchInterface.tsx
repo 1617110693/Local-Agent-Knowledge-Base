@@ -1,10 +1,12 @@
 import { useState, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { search as searchAPI, getChunkByIndex, type ChunkByIndex } from "../../services/pythonClient";
+import { search as searchAPI, getChunkByIndex, getChunkRange, type ChunkByIndex } from "../../services/pythonClient";
 import { useSettingsStore } from "../../stores/useSettingsStore";
 import { useI18n } from "../../i18n";
 import { ErrorDialog } from "../common/ErrorDialog";
 import { ChunkDetailDialog } from "../common/ChunkDetailDialog";
+import { listDocuments } from "../../services/tauriBridge";
+import type { Document } from "../../types";
 import { Search, Loader2, FileText, ArrowLeft, X, ChevronDown, ChevronUp, Hash } from "lucide-react";
 import { MarkdownRenderer } from "../common/MarkdownRenderer";
 import type { SearchResult, NeighborChunk } from "../../types";
@@ -38,18 +40,57 @@ export function SearchInterface() {
     new Map(results.map((r) => [r.doc_id, { doc_id: r.doc_id, doc_name: r.doc_name }])).values()
   );
 
-  // Navigate to adjacent chunk by chunk_index (not by search result order)
+  // Navigate to adjacent chunk by chunk_index, with cross-part support
   const navigateAdjacentChunk = (chunk: SearchResult, delta: number, kb: string,
-    setFn: (c: SearchResult | null) => void, errFn: (e: string) => void) => {
+    setFn: (c: SearchResult | null) => void) => {
     const ci = chunk.metadata?.chunk_index as number | undefined;
     if (ci == null || !chunk.doc_id) return;
     getChunkByIndex({ kb_id: kb, doc_id: chunk.doc_id, chunk_index: ci + delta }).then(res => {
-      if ("error" in res) return; // boundary, silently skip
-      const c = res.chunk;
-      setFn({
-        content: c.content, doc_name: c.doc_name, doc_id: c.doc_id, kb_id: c.kb_id,
-        score: 0, metadata: { chunk_index: c.chunk_index, page: c.page_number },
-      } as SearchResult);
+      if (!("error" in res)) {
+        const c = res.chunk;
+        setFn({
+          content: c.content, doc_name: c.doc_name, doc_id: c.doc_id, kb_id: c.kb_id,
+          score: 0, metadata: { chunk_index: c.chunk_index, page: c.page_number },
+        } as SearchResult);
+        return;
+      }
+      // Chunk not found — try next/prev part for split documents
+      listDocuments(kb).then(docs => {
+        // Find sibling parts (same parent_doc_id or current is parent)
+        const curParent = (docs.find(d => d.id === chunk.doc_id) as any)?.parent_doc_id;
+        const siblings = docs
+          .filter(d => d.id !== chunk.doc_id)
+          .filter(d => (curParent && (d as any).parent_doc_id === curParent) || (d as any).parent_doc_id === chunk.doc_id)
+          .sort((a, b) => a.name.localeCompare(b.name));
+        if (!siblings.length) return;
+        const curIdx = siblings.findIndex(d => d.name.localeCompare(chunk.doc_name!) > 0);
+        const target = delta > 0
+          ? (curIdx >= 0 ? siblings[curIdx] : siblings[0])
+          : (curIdx > 0 ? siblings[curIdx - 1] : siblings[siblings.length - 1]);
+        if (!target) return;
+        if (delta > 0) {
+          // Next part: go to chunk 0
+          getChunkByIndex({ kb_id: kb, doc_id: target.id, chunk_index: 0 }).then(r2 => {
+            if ("error" in r2) return;
+            const c2 = r2.chunk;
+            setFn({
+              content: c2.content, doc_name: c2.doc_name, doc_id: c2.doc_id, kb_id: c2.kb_id,
+              score: 0, metadata: { chunk_index: c2.chunk_index, page: c2.page_number },
+            } as SearchResult);
+          }).catch(() => {});
+        } else {
+          // Prev part: go to last chunk via getChunkRange
+          getChunkRange({ kb_id: kb, doc_id: target.id, start: 0, end: 100000 }).then(r2 => {
+            const chunks = r2.chunks || [];
+            if (!chunks.length) return;
+            const last = chunks.reduce((a, b) => a.chunk_index > b.chunk_index ? a : b);
+            setFn({
+              content: last.content, doc_name: last.doc_name, doc_id: last.doc_id, kb_id: last.kb_id,
+              score: 0, metadata: { chunk_index: last.chunk_index, page: last.page_number },
+            } as SearchResult);
+          }).catch(() => {});
+        }
+      }).catch(() => {});
     }).catch(() => {});
   };
 
@@ -253,11 +294,11 @@ export function SearchInterface() {
             score: selectedChunk.score,
           }}
           onClose={() => setSelectedChunk(null)}
-          onPrev={selectedChunk.metadata?.chunk_index != null && selectedChunk.metadata.chunk_index > 0
-            ? () => navigateAdjacentChunk(selectedChunk, -1, kbId!, setSelectedChunk, setError) : undefined}
+          onPrev={selectedChunk.metadata?.chunk_index != null && selectedChunk.doc_id
+            ? () => navigateAdjacentChunk(selectedChunk, -1, kbId!, setSelectedChunk) : undefined}
           onNext={selectedChunk.metadata?.chunk_index != null && selectedChunk.doc_id
-            ? () => navigateAdjacentChunk(selectedChunk, 1, kbId!, setSelectedChunk, setError) : undefined}
-          hasPrev={!!(selectedChunk.metadata?.chunk_index != null && selectedChunk.metadata.chunk_index > 0)}
+            ? () => navigateAdjacentChunk(selectedChunk, 1, kbId!, setSelectedChunk) : undefined}
+          hasPrev={!!(selectedChunk.metadata?.chunk_index != null && selectedChunk.doc_id)}
           hasNext={!!(selectedChunk.metadata?.chunk_index != null && selectedChunk.doc_id)}
         />
       )}

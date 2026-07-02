@@ -43,7 +43,7 @@ export function ChunkDetailDialog({ chunk, onClose, onPrev, onNext, hasPrev, has
               <p className="text-xs text-muted-foreground">
                 {ci != null && <span>Chunk #{ci}</span>}
                 {(chunk.page_number ?? 0) > 0 && <span> · {t("search.page")} {chunk.page_number}</span>}
-                {chunk.score != null && (
+                {chunk.score != null && chunk.score > 0 && (
                   <span className="font-mono text-primary ml-1">{(chunk.score * 100).toFixed(0)}%</span>
                 )}
               </p>

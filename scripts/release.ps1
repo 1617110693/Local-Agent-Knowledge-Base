@@ -88,6 +88,7 @@ New-Item -ItemType Directory -Force -Path "$Root\services\python-backend\dist" |
 Invoke-Native {
     .venv\Scripts\python.exe -m PyInstaller --clean --noconfirm --paths src `
         --onefile --console --hide-console hide-early `
+        --hidden-import knowledge_backend.llama_service `
         --copy-metadata fastmcp `
         --copy-metadata fastmcp-slim `
         --copy-metadata mcp `
@@ -104,8 +105,8 @@ Write-Host "     knowledge-backend.exe mcp  -> MCP stdio server" -ForegroundColo
 
 Pop-Location
 
-# 4. Copy sidecar + build Tauri installer
-Write-Host "`n[4/4] Copying sidecar + building desktop installer..." -ForegroundColor Yellow
+# 4. Copy sidecars + build Tauri installer
+Write-Host "`n[4/4] Copying sidecars + building desktop installer..." -ForegroundColor Yellow
 $binDir = "$Root\apps\desktop\src-tauri\binaries"
 # Remove old MCP-only exe if present from a previous release
 Remove-Item -Force "$binDir\skb-mcp*" -ErrorAction SilentlyContinue

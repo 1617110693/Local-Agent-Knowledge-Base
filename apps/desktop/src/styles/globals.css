@@ -63,7 +63,7 @@ html, body {
   @apply bg-background text-foreground;
   border-radius: 12px;
   overflow: hidden;
-  border: 1px solid hsl(var(--border));
+  box-shadow: 0 0 0 1px hsl(var(--border) / 0.3), 0 4px 24px rgba(0,0,0,0.12);
 }
 
 /* Text selection — use muted gray instead of native blue */
