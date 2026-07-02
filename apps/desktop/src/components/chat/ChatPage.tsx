@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useChatStore } from "../../stores/useChatStore";
 import { useKBStore } from "../../stores/useKBStore";
@@ -29,53 +29,96 @@ function fmtArg(v: unknown): string {
   return JSON.stringify(v, null, 2);
 }
 
-/** Collapsible tool call cards — one per tool call, expandable to show arguments. */
-function ToolCallCards({ toolCalls }: { toolCalls: ToolCall[] }) {
-  const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
+/** Collapsible tool call cards — shows request args + response, auto-expand current. */
+function ToolCallCards({ toolCalls, toolResults, activeToolId }: {
+  toolCalls: ToolCall[];
+  toolResults: Record<string, string>;
+  activeToolId: string | null;
+}) {
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const resultsRef = useRef<Record<string, HTMLDivElement | null>>({});
 
   if (!toolCalls || toolCalls.length === 0) return null;
 
-  // Group consecutive calls of the same tool type
+  // Auto-expand active tool, collapse others (unless manually toggled)
+  useEffect(() => {
+    if (activeToolId) {
+      setExpandedIds(prev => {
+        const next = new Set(prev);
+        if (!next.has(activeToolId)) next.add(activeToolId);
+        return next;
+      });
+      // Auto-scroll the active result
+      setTimeout(() => {
+        resultsRef.current[activeToolId]?.scrollTo({ top: resultsRef.current[activeToolId]?.scrollHeight, behavior: "smooth" });
+      }, 50);
+    }
+  }, [activeToolId]);
+
+  const toggle = (id: string) => {
+    setExpandedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
   const items = toolCalls.map((tc, i) => {
     let args: Record<string, unknown> = {};
     try { args = JSON.parse(tc.function.arguments); } catch { /* keep empty */ }
     const label = toolLabel(tc);
     const name = tc.function.name.replace(/_/g, " ");
-    return { tc, args, label, name, idx: i };
+    const result = toolResults[tc.id];
+    return { tc, args, label, name, idx: i, result };
   });
 
   return (
-    <div className="space-y-1.5">
-      {items.map(({ tc, args, label, name, idx }) => {
-        const isExpanded = expandedIdx === idx;
+    <div className="space-y-1.5 w-full max-w-full">
+      {items.map(({ tc, args, label, name, idx, result }) => {
+        const isExpanded = expandedIds.has(tc.id || String(idx));
+        const isExecuting = activeToolId === tc.id && !result;
         const argEntries = Object.entries(args).filter(([, v]) => v != null && v !== "" && (!Array.isArray(v) || v.length > 0));
+        const hasBody = argEntries.length > 0 || result;
         return (
-          <div key={tc.id || idx} className="rounded-lg border bg-card/60 overflow-hidden">
+          <div key={tc.id || idx} className="rounded-lg border bg-card/60 overflow-hidden min-w-0">
             <button
-              onClick={() => setExpandedIdx(isExpanded ? null : idx)}
+              onClick={() => hasBody && toggle(tc.id || String(idx))}
               className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted/50 transition-colors"
             >
-              <Search className="w-3 h-3 text-primary shrink-0" />
+              {isExecuting ? <Loader2 className="w-3 h-3 animate-spin text-primary shrink-0" /> : <Search className="w-3 h-3 text-primary shrink-0" />}
               <span className="font-medium capitalize truncate flex-1 text-left">{name}</span>
-              <span className="text-muted-foreground truncate max-w-[200px] hidden sm:inline">{label}</span>
-              {argEntries.length > 0 && (
+              <span className="text-muted-foreground truncate max-w-[300px] hidden sm:inline">{label}</span>
+              {hasBody && (
                 isExpanded
                   ? <ChevronUp className="w-3 h-3 text-muted-foreground shrink-0" />
                   : <ChevronDown className="w-3 h-3 text-muted-foreground shrink-0" />
               )}
             </button>
-            {isExpanded && argEntries.length > 0 && (
-              <div className="border-t max-h-48 overflow-y-auto">
-                <table className="w-full text-[11px] border-collapse">
-                  <tbody>
-                    {argEntries.map(([k, v]) => (
-                      <tr key={k} className="border-b last:border-0">
-                        <td className="px-3 py-1 text-muted-foreground font-medium w-[30%] align-top whitespace-nowrap">{k}</td>
-                        <td className="px-3 py-1 font-mono whitespace-pre-wrap break-all">{fmtArg(v)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+            {isExpanded && (
+              <div className="border-t max-h-56 overflow-y-auto" ref={el => { resultsRef.current[tc.id || String(idx)] = el; }}>
+                {argEntries.length > 0 && (
+                  <table className="w-full text-[11px] border-collapse">
+                    <tbody>
+                      {argEntries.map(([k, v]) => (
+                        <tr key={k} className="border-b last:border-0">
+                          <td className="px-3 py-1 text-muted-foreground font-medium w-[25%] align-top whitespace-nowrap">{k}</td>
+                          <td className="px-3 py-1 font-mono whitespace-pre-wrap break-all">{fmtArg(v)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+                {result && (
+                  <div className="px-3 py-2 border-t border-dashed">
+                    <div className="text-[10px] text-muted-foreground mb-1 uppercase tracking-wider">Result</div>
+                    <pre className="text-[11px] whitespace-pre-wrap break-all font-mono leading-relaxed max-h-64 overflow-y-auto">{_summarize(result)}</pre>
+                  </div>
+                )}
+                {isExecuting && (
+                  <div className="px-3 py-2 text-xs text-muted-foreground flex items-center gap-2">
+                    <Loader2 className="w-3 h-3 animate-spin" /> Executing...
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -83,6 +126,68 @@ function ToolCallCards({ toolCalls }: { toolCalls: ToolCall[] }) {
       })}
     </div>
   );
+}
+
+/** Memoized message row — skips re-render when unchanged during streaming. */
+const MessageRow = React.memo(function MessageRow({
+  msg, i, isStreaming, isLast, streaming,
+  toolResults, activeToolId, previewChunk, setPreviewChunk,
+  copiedMsgIdx, handleCopy, sourcesExpanded, setSourcesExpanded,
+  lastAssistantSources, t,
+}: {
+  msg: ChatMessage; i: number; isStreaming: boolean; isLast: boolean; streaming: boolean;
+  toolResults: Record<string, string>; activeToolId: string | null;
+  previewChunk: SearchResult | null; setPreviewChunk: (s: SearchResult | null) => void;
+  copiedMsgIdx: number | null; handleCopy: (c: string, i: number) => void;
+  sourcesExpanded: boolean; setSourcesExpanded: (v: boolean) => void;
+  lastAssistantSources: SearchResult[]; t: ReturnType<typeof useI18n>["t"];
+}) {
+  return (
+    <div className={`flex gap-3 group ${msg.role === "user" ? "justify-end" : ""}`}>
+      {msg.role === "assistant" && (
+        <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-0.5"><Bot className="w-4 h-4 text-primary" /></div>
+      )}
+      <div className="relative max-w-[80%]">
+        <div className={`rounded-xl px-4 py-2.5 text-sm ${msg.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted"}`}>
+          {msg.role === "assistant" && msg.content ? (
+            isStreaming ? (
+              <div className="whitespace-pre-wrap break-words">{msg.content}</div>
+            ) : (
+              <MarkdownRenderer
+                className="prose prose-sm max-w-none dark:prose-invert text-sm"
+                sources={msg.sources}
+                onSourceClick={(s) => setPreviewChunk(s as SearchResult)}
+              >
+                {msg.content}
+              </MarkdownRenderer>
+            )
+          ) : msg.role === "assistant" && msg.tool_calls && !msg.content ? (
+            <ToolCallCards toolCalls={msg.tool_calls} toolResults={toolResults} activeToolId={activeToolId} />
+          ) : msg.role === "assistant" && streaming && isLast ? (
+            <Loader2 className="w-3 h-3 animate-spin inline" />
+          ) : (
+            <div className="whitespace-pre-wrap break-words">{msg.content}</div>
+          )}
+        </div>
+        {msg.content && (
+          <button
+            onClick={() => handleCopy(msg.content, i)}
+            className={`absolute ${msg.role === "user" ? "-left-8 bottom-1" : "-right-8 bottom-1"} hidden group-hover:flex p-1 rounded hover:bg-muted text-muted-foreground transition-colors`}
+            title="Copy"
+          >
+            {copiedMsgIdx === i ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
+          </button>
+        )}
+      </div>
+      {msg.role === "user" && (
+        <div className="w-7 h-7 rounded-full bg-primary flex items-center justify-center shrink-0 mt-0.5"><User className="w-4 h-4 text-primary-foreground" /></div>
+      )}
+    </div>
+  );
+});
+
+function _summarize(text: string): string {
+  return text;
 }
 
 export function ChatPage() {
@@ -104,6 +209,9 @@ export function ChatPage() {
   const [showKbDropdown, setShowKbDropdown] = useState(false);
   const [previewChunk, setPreviewChunk] = useState<SearchResult | null>(null);
   const [toolStatus, setToolStatus] = useState("");
+  const [toolResults, setToolResults] = useState<Record<string, string>>({});
+  const [activeToolId, setActiveToolId] = useState<string | null>(null);
+  const [manualExpand, setManualExpand] = useState<Set<string>>(new Set());
   const [sourcesExpanded, setSourcesExpanded] = useState(false);
   const [copiedMsgIdx, setCopiedMsgIdx] = useState<number | null>(null);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
@@ -129,7 +237,12 @@ export function ChatPage() {
   }, [convId]);
 
   const scrollToBottom = (smooth = true) => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: smooth ? "smooth" : "instant" });
+    const el = scrollRef.current;
+    if (!el) return;
+    // Use requestAnimationFrame for smoother scrolling
+    requestAnimationFrame(() => {
+      el.scrollTo({ top: el.scrollHeight, behavior: smooth ? "smooth" : "instant" });
+    });
   };
 
   useEffect(() => {
@@ -256,12 +369,12 @@ HOW TO ANSWER QUESTIONS (RAG-first workflow):
 
               if (delta?.content) {
                 fullContent += delta.content;
-                // Throttle: push to store every 50ms to avoid stuttery re-renders
+                // Throttle: push to store every 80ms to avoid stuttery re-renders
                 const now = Date.now();
-                if (now - lastFlush >= 50 && !flushTimer) {
+                if (now - lastFlush >= 80 && !flushTimer) {
                   flushContent();
                 } else if (!flushTimer) {
-                  flushTimer = setTimeout(flushContent, 50 - (now - lastFlush));
+                  flushTimer = setTimeout(flushContent, 80 - (now - lastFlush));
                 }
               }
               if (delta?.tool_calls) {
@@ -310,6 +423,9 @@ HOW TO ANSWER QUESTIONS (RAG-first workflow):
           // Execute each tool call
           for (const tc of tcArray) {
             setToolStatus(toolLabel(tc));
+            setActiveToolId(tc.id);
+            // Collapse all previously manual-expanded cards for new tool round
+            setManualExpand(new Set());
             try {
               const { result, newSources } = await executeToolCall(tc, kbList, {
                 maxSearchResultChars: settings.max_search_result_chars || 2000,
@@ -317,6 +433,8 @@ HOW TO ANSWER QUESTIONS (RAG-first workflow):
                 maxChunkChars: settings.max_chunk_chars || 800,
               }, selectedKbIds.length > 0 ? selectedKbIds : undefined, contextWindow, allSources.length);
               allSources = [...allSources, ...newSources];
+              // Store tool result for UI display
+              setToolResults(prev => ({ ...prev, [tc.id]: result.content }));
               messages.push({
                 role: "tool",
                 tool_call_id: result.tool_call_id,
@@ -375,11 +493,11 @@ HOW TO ANSWER QUESTIONS (RAG-first workflow):
     setStreaming(false);
     setToolStatus("");
   };
-  const handleCopy = async (content: string, idx: number) => {
+  const handleCopy = useCallback(async (content: string, idx: number) => {
     await navigator.clipboard.writeText(content);
     setCopiedMsgIdx(idx);
     setTimeout(() => setCopiedMsgIdx(null), 2000);
-  };
+  }, []);
   const handleRegenerate = async () => {
     if (!conv || streaming) return;
     const msgs = [...conv.messages];
@@ -558,47 +676,17 @@ HOW TO ANSWER QUESTIONS (RAG-first workflow):
           </div>
         ) : (
           messages.filter((m) => m.role !== "tool").map((msg, i) => (
-            <div key={i} className={`flex gap-3 group ${msg.role === "user" ? "justify-end" : ""}`}>
-              {msg.role === "assistant" && (
-                <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-0.5"><Bot className="w-4 h-4 text-primary" /></div>
-              )}
-              <div className="relative max-w-[80%]">
-                <div className={`rounded-xl px-4 py-2.5 text-sm ${msg.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted"}`}>
-                  {msg.role === "assistant" && msg.content ? (
-                    streaming && i === messages.length - 1 ? (
-                      <div className="whitespace-pre-wrap break-words">{msg.content}</div>
-                    ) : (
-                      <MarkdownRenderer
-                        className="prose prose-sm max-w-none dark:prose-invert text-sm"
-                        sources={msg.sources}
-                        onSourceClick={(s) => setPreviewChunk(s as SearchResult)}
-                      >
-                        {msg.content}
-                      </MarkdownRenderer>
-                    )
-                  ) : msg.role === "assistant" && msg.tool_calls && !msg.content ? (
-                    <ToolCallCards toolCalls={msg.tool_calls} />
-                  ) : msg.role === "assistant" && streaming && i === messages.length - 1 ? (
-                    <Loader2 className="w-3 h-3 animate-spin inline" />
-                  ) : (
-                    <div className="whitespace-pre-wrap break-words">{msg.content}</div>
-                  )}
-                </div>
-                {/* Copy button on hover */}
-                {msg.content && (
-                  <button
-                    onClick={() => handleCopy(msg.content, i)}
-                    className={`absolute ${msg.role === "user" ? "-left-8 bottom-1" : "-right-8 bottom-1"} hidden group-hover:flex p-1 rounded hover:bg-muted text-muted-foreground transition-colors`}
-                    title="Copy"
-                  >
-                    {copiedMsgIdx === i ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
-                  </button>
-                )}
-              </div>
-              {msg.role === "user" && (
-                <div className="w-7 h-7 rounded-full bg-primary flex items-center justify-center shrink-0 mt-0.5"><User className="w-4 h-4 text-primary-foreground" /></div>
-              )}
-            </div>
+            <MessageRow key={i}
+              msg={msg} i={i}
+              isStreaming={streaming && i === messages.length - 1}
+              isLast={i === messages.length - 1}
+              streaming={streaming}
+              toolResults={toolResults} activeToolId={activeToolId}
+              previewChunk={previewChunk} setPreviewChunk={setPreviewChunk}
+              copiedMsgIdx={copiedMsgIdx} handleCopy={handleCopy}
+              sourcesExpanded={sourcesExpanded} setSourcesExpanded={setSourcesExpanded}
+              lastAssistantSources={lastAssistantSources} t={t}
+            />
           ))
         )}
 
