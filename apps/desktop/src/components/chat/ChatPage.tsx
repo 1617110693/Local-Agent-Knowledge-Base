@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useChatStore } from "../../stores/useChatStore";
 import { useKBStore } from "../../stores/useKBStore";
@@ -129,18 +129,15 @@ function ToolCallCards({ toolCalls, toolResults, activeToolId }: {
 }
 
 /** Memoized message row — skips re-render when unchanged during streaming. */
-const MessageRow = React.memo(function MessageRow({
+function MessageRow({
   msg, i, isStreaming, isLast, streaming,
-  toolResults, activeToolId, previewChunk, setPreviewChunk,
-  copiedMsgIdx, handleCopy, sourcesExpanded, setSourcesExpanded,
-  lastAssistantSources, t,
+  toolResults, activeToolId, setPreviewChunk,
+  copiedMsgIdx, handleCopy,
 }: {
   msg: ChatMessage; i: number; isStreaming: boolean; isLast: boolean; streaming: boolean;
   toolResults: Record<string, string>; activeToolId: string | null;
-  previewChunk: SearchResult | null; setPreviewChunk: (s: SearchResult | null) => void;
+  setPreviewChunk: (s: SearchResult | null) => void;
   copiedMsgIdx: number | null; handleCopy: (c: string, i: number) => void;
-  sourcesExpanded: boolean; setSourcesExpanded: (v: boolean) => void;
-  lastAssistantSources: SearchResult[]; t: ReturnType<typeof useI18n>["t"];
 }) {
   return (
     <div className={`flex gap-3 group ${msg.role === "user" ? "justify-end" : ""}`}>
@@ -184,7 +181,7 @@ const MessageRow = React.memo(function MessageRow({
       )}
     </div>
   );
-});
+}
 
 function _summarize(text: string): string {
   return text;
@@ -239,9 +236,10 @@ export function ChatPage() {
   const scrollToBottom = (smooth = true) => {
     const el = scrollRef.current;
     if (!el) return;
-    // Use requestAnimationFrame for smoother scrolling
+    // During streaming, always use instant scroll — smooth causes jitter
+    const behavior = (smooth && !streaming) ? "smooth" : "instant";
     requestAnimationFrame(() => {
-      el.scrollTo({ top: el.scrollHeight, behavior: smooth ? "smooth" : "instant" });
+      el.scrollTo({ top: el.scrollHeight, behavior });
     });
   };
 
@@ -344,7 +342,7 @@ HOW TO ANSWER QUESTIONS (RAG-first workflow):
         const toolCallsAcc = new Map<number, { id: string; name: string; arguments: string }>();
         let finishReason = "";
 
-        // Throttled store updates: push to store at most every ~50ms during streaming
+        // Throttled store updates during streaming
         let lastFlush = 0;
         let flushTimer: ReturnType<typeof setTimeout> | null = null;
         const flushContent = () => {
@@ -667,7 +665,7 @@ HOW TO ANSWER QUESTIONS (RAG-first workflow):
       )}
 
       {/* Messages */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-4 space-y-4" style={{ overflowAnchor: "auto" }}>
         {messages.length === 0 && !toolStatus ? (
           <div className="text-center py-16">
             <MessageSquare className="w-10 h-10 text-muted-foreground/30 mx-auto mb-3" />
@@ -682,10 +680,8 @@ HOW TO ANSWER QUESTIONS (RAG-first workflow):
               isLast={i === messages.length - 1}
               streaming={streaming}
               toolResults={toolResults} activeToolId={activeToolId}
-              previewChunk={previewChunk} setPreviewChunk={setPreviewChunk}
+              setPreviewChunk={setPreviewChunk}
               copiedMsgIdx={copiedMsgIdx} handleCopy={handleCopy}
-              sourcesExpanded={sourcesExpanded} setSourcesExpanded={setSourcesExpanded}
-              lastAssistantSources={lastAssistantSources} t={t}
             />
           ))
         )}
