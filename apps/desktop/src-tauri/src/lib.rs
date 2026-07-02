@@ -32,15 +32,19 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .setup(|app| {
-            // Single-instance: bind a singleton port. If already bound,
-            // another instance is running — exit quietly.
+            // Single-instance: bind a singleton port. Intentionally leaked
+            // so the port stays bound for the app's entire lifetime.
             let singleton_port: u16 = 17391;
-            let _singleton = match TcpListener::bind(("127.0.0.1", singleton_port)) {
-                Ok(listener) => listener,
+            match TcpListener::bind(("127.0.0.1", singleton_port)) {
+                Ok(listener) => {
+                    // Prevent Drop from closing the socket
+                    std::mem::forget(listener);
+                }
                 Err(_) => {
+                    // Another instance is already running — exit quietly
                     std::process::exit(0);
                 }
-            };
+            }
 
             let home = std::env::var("HOME")
                 .or_else(|_| std::env::var("USERPROFILE"))
