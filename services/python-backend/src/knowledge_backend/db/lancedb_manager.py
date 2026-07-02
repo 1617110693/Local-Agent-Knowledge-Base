@@ -89,6 +89,8 @@ class LanceDBManager:
                     "content": chunk.content,
                     "chunk_index": chunk.chunk_index,
                     "page_number": chunk.metadata.get("page", 0),
+                    "page_start": chunk.metadata.get("page_start", chunk.metadata.get("page", 0)),
+                    "page_end": chunk.metadata.get("page_end", chunk.metadata.get("page", 0)),
                     "chunk_strategy": chunk_strategy,
                     "metadata_json": json.dumps(chunk.metadata),
                     "vector": [float(v) for v in vector],
@@ -274,6 +276,8 @@ class LanceDBManager:
             # (e.g. enrich_with_context) can access them consistently.
             metadata.setdefault("chunk_index", r.get("chunk_index"))
             metadata.setdefault("page", r.get("page_number"))
+            metadata.setdefault("page_start", r.get("page_start"))
+            metadata.setdefault("page_end", r.get("page_end"))
             # _distance is a dissimilarity measure (lower = better match).
             # For cosine: range [0, 2] where 0=identical, 2=opposite.
             # Convert to 0–1 similarity: (2.0 - distance) / 2.0
@@ -356,6 +360,8 @@ class LanceDBManager:
                         "content": row.get("content", ""),
                         "chunk_index": ci,
                         "page_number": row.get("page_number", 0),
+                        "page_start": row.get("page_start"),
+                        "page_end": row.get("page_end"),
                         "metadata": metadata,
                     }
 
@@ -417,8 +423,8 @@ class LanceDBManager:
             pass
         metadata["chunk_index"] = r.get("chunk_index")
         metadata["page"] = r.get("page_number")
-
-        # Check if prev/next chunks exist
+        metadata["page_start"] = r.get("page_start")
+        metadata["page_end"] = r.get("page_end")
         prev_exists = False
         next_exists = False
         try:
@@ -450,6 +456,8 @@ class LanceDBManager:
             "content": r.get("content", ""),
             "chunk_index": r.get("chunk_index"),
             "page_number": r.get("page_number", 0),
+            "page_start": r.get("page_start"),
+            "page_end": r.get("page_end"),
             "metadata": metadata,
             "prev_exists": prev_exists,
             "next_exists": next_exists,
@@ -481,6 +489,8 @@ class LanceDBManager:
                 pass
             metadata["chunk_index"] = r.get("chunk_index")
             metadata["page"] = r.get("page_number")
+            metadata["page_start"] = r.get("page_start")
+            metadata["page_end"] = r.get("page_end")
             results.append({
                 "chunk_id": r.get("chunk_id", ""),
                 "doc_id": r.get("doc_id", ""),
@@ -489,6 +499,8 @@ class LanceDBManager:
                 "content": r.get("content", ""),
                 "chunk_index": r.get("chunk_index"),
                 "page_number": r.get("page_number", 0),
+                "page_start": r.get("page_start"),
+                "page_end": r.get("page_end"),
                 "start_char": metadata.get("start_char"),
                 "metadata": metadata,
             })

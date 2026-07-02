@@ -76,6 +76,8 @@ export interface NeighborChunk {
   content: string;
   chunk_index: number;
   page_number?: number;
+  page_start?: number;
+  page_end?: number;
   metadata?: Record<string, unknown>;
 }
 
@@ -91,8 +93,12 @@ export interface SearchResult {
   doc_name: string;
   content: string;
   score: number;
+  page_start?: number;
+  page_end?: number;
   metadata: {
     page?: number;
+    page_start?: number;
+    page_end?: number;
     chunk_index?: number;
     [key: string]: unknown;
   };

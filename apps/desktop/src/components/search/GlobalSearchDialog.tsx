@@ -236,7 +236,9 @@ export function GlobalSearchDialog({ open, onClose }: Props) {
             doc_id: selectedChunk.doc_id,
             kb_id: selectedChunk.kb_id,
             chunk_index: selectedChunk.metadata?.chunk_index as number | undefined,
-            page_number: selectedChunk.metadata?.page,
+            page_number: selectedChunk.page_start ?? selectedChunk.metadata?.page,
+            page_start: selectedChunk.page_start ?? selectedChunk.metadata?.page_start,
+            page_end: selectedChunk.page_end ?? selectedChunk.metadata?.page_end,
             score: selectedChunk.score,
           }}
           onClose={() => setSelectedChunk(null)}
@@ -255,7 +257,9 @@ export function GlobalSearchDialog({ open, onClose }: Props) {
           chunk={{
             content: selectedNeighbor.content,
             chunk_index: selectedNeighbor.chunk_index,
-            page_number: selectedNeighbor.page_number,
+            page_number: selectedNeighbor.page_start ?? selectedNeighbor.page_number,
+            page_start: selectedNeighbor.page_start,
+            page_end: selectedNeighbor.page_end,
             doc_id: (selectedNeighbor as any).metadata?.doc_id,
             kb_id: (selectedNeighbor as any).metadata?.kb_id,
             doc_name: (selectedNeighbor as any).metadata?.doc_name,

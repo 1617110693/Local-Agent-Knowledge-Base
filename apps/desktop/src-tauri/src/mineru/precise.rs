@@ -7,12 +7,18 @@ use tokio::time::sleep;
 const POLL_INTERVAL_SECS: u64 = 3;
 const MAX_POLL_ATTEMPTS: u32 = 200; // Max 10 minutes
 
+/// Result from a MinerU Precise parse.
+pub struct PreciseResult {
+    pub markdown: String,
+    /// The JSON file from the ZIP containing pdf_info with page metadata.
+    /// None if no JSON was found in the archive.
+    pub json_content: Option<String>,
+}
+
 /// Parse a document using MinerU's Precise API (v4/extract/task).
 /// This mode requires a token and supports files up to 200MB / 200 pages.
-/// For local files, we'd need to upload first — this implementation uses
-/// a local file path and simulates the flow. In production, you'd first upload
-/// the file to a public URL or use the batch upload endpoint.
-pub async fn parse_with_precise(token: &str, file_path: &Path) -> Result<String, AppError> {
+/// Returns both the markdown and the JSON metadata (for page number tracking).
+pub async fn parse_with_precise(token: &str, file_path: &Path) -> Result<PreciseResult, AppError> {
     // For precise mode with local files, the recommended flow is:
     // 1. Use the batch upload API (api/v4/file-urls/batch) to get upload URLs
     // 2. Upload the file to the pre-signed URL
@@ -39,9 +45,9 @@ pub async fn parse_with_precise(token: &str, file_path: &Path) -> Result<String,
     upload_file_to_url(&client, &upload_url, file_path).await?;
 
     // Step 3 & 4: Poll for batch results
-    let markdown = poll_batch_results(token, &client, &batch_id, file_name).await?;
+    let result = poll_batch_results(token, &client, &batch_id, file_name).await?;
 
-    Ok(markdown)
+    Ok(result)
 }
 
 async fn request_upload_urls(
@@ -141,7 +147,7 @@ async fn poll_batch_results(
     client: &Client,
     batch_id: &str,
     file_name: &str,
-) -> Result<String, AppError> {
+) -> Result<PreciseResult, AppError> {
     let url = format!(
         "https://mineru.net/api/v4/extract-results/batch/{}",
         batch_id
@@ -196,15 +202,18 @@ async fn download_and_extract_markdown(
     client: &Client,
     zip_url: &str,
     _file_name: &str,
-) -> Result<String, AppError> {
+) -> Result<PreciseResult, AppError> {
     // Download the ZIP file
     let resp = client.get(zip_url).send().await?;
     let zip_bytes = resp.bytes().await?;
 
-    // Extract the ZIP in memory and find full.md
+    // Extract the ZIP in memory — find both full.md and the JSON metadata
     let cursor = std::io::Cursor::new(zip_bytes);
     let mut archive = zip::ZipArchive::new(cursor)
         .map_err(|e| AppError::MinerU(format!("Failed to open ZIP: {}", e)))?;
+
+    let mut markdown: Option<String> = None;
+    let mut json_content: Option<String> = None;
 
     for i in 0..archive.len() {
         let mut file = archive
@@ -212,16 +221,34 @@ async fn download_and_extract_markdown(
             .map_err(|e| AppError::MinerU(format!("Failed to read ZIP entry: {}", e)))?;
 
         let name = file.name().to_string();
-        if name.ends_with("full.md") || name == "full.md" {
+        let name_lower = name.to_lowercase();
+
+        if name_lower.ends_with("full.md") || name_lower == "full.md" {
             let mut content = String::new();
             use std::io::Read;
             file.read_to_string(&mut content)
                 .map_err(|e| AppError::MinerU(format!("Failed to read markdown: {}", e)))?;
-            return Ok(content);
+            markdown = Some(content);
+        } else if name_lower.ends_with(".json") && !name_lower.contains("layout") && !name_lower.contains("middle") {
+            // Pick up the main result JSON (has pdf_info), skip layout/middle JSONs
+            let mut content = String::new();
+            use std::io::Read;
+            if file.read_to_string(&mut content).is_ok() {
+                // Verify it's the right JSON — must contain pdf_info
+                if content.contains("\"pdf_info\"") {
+                    json_content = Some(content);
+                }
+            }
         }
     }
 
-    Err(AppError::MinerU(
-        "full.md not found in result archive".to_string(),
-    ))
+    match markdown {
+        Some(md) => Ok(PreciseResult {
+            markdown: md,
+            json_content,
+        }),
+        None => Err(AppError::MinerU(
+            "full.md not found in result archive".to_string(),
+        )),
+    }
 }

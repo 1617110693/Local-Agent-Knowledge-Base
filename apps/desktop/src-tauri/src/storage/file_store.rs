@@ -732,6 +732,18 @@ impl FileStore {
         Ok(())
     }
 
+    /// Save the MinerU result JSON (contains pdf_info with page metadata).
+    pub fn save_mineru_json(
+        &self,
+        kb_id: &str,
+        doc_id: &str,
+        json_content: &str,
+    ) -> CommandResult<()> {
+        let json_path = self.get_doc_dir(kb_id, doc_id).join("mineru_result.json");
+        std::fs::write(&json_path, json_content)?;
+        Ok(())
+    }
+
     pub fn save_document_meta(&self, doc: &Document) -> CommandResult<()> {
         let meta_path = self.get_doc_dir(&doc.kb_id, &doc.id).join("metadata.json");
         let data = serde_json::to_string_pretty(doc)?;

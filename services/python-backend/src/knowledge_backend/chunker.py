@@ -1,7 +1,10 @@
 """Text chunking strategies for document splitting."""
 import re
 from dataclasses import dataclass, field
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .page_mapper import PageMapper
 
 
 @dataclass
@@ -42,8 +45,22 @@ class Chunker:
             else:
                 c.metadata["start_char"] = pos
 
+    @staticmethod
+    def _annotate_page_info(chunks: List[Chunk], page_mapper: "Optional[PageMapper]") -> None:
+        """Annotate each chunk with page_start / page_end from the page mapper."""
+        if page_mapper is None:
+            return
+        for c in chunks:
+            start_char = c.metadata.get("start_char", 0)
+            end_char = start_char + len(c.content)
+            page_start, page_end = page_mapper.get_page_range(start_char, end_char)
+            c.metadata["page"] = page_start           # backward compat
+            c.metadata["page_start"] = page_start
+            c.metadata["page_end"] = page_end
+
     def chunk(
-        self, text: str, metadata: Dict[str, Any] | None = None
+        self, text: str, metadata: Dict[str, Any] | None = None,
+        page_mapper: "Optional[PageMapper]" = None,
     ) -> List[Chunk]:
         raise NotImplementedError
 
@@ -56,7 +73,8 @@ class FixedSizeChunker(Chunker):
         self.chunk_overlap = chunk_overlap
 
     def chunk(
-        self, text: str, metadata: Dict[str, Any] | None = None
+        self, text: str, metadata: Dict[str, Any] | None = None,
+        page_mapper: "Optional[PageMapper]" = None,
     ) -> List[Chunk]:
         meta = metadata or {}
         chunks = []
@@ -77,6 +95,7 @@ class FixedSizeChunker(Chunker):
             )
             start += self.chunk_size - self.chunk_overlap
             chunk_index += 1
+        self._annotate_page_info(chunks, page_mapper)
         return chunks
 
 
@@ -90,7 +109,8 @@ class SemanticChunker(Chunker):
         self.chunk_overlap = chunk_overlap
 
     def chunk(
-        self, text: str, metadata: Dict[str, Any] | None = None
+        self, text: str, metadata: Dict[str, Any] | None = None,
+        page_mapper: "Optional[PageMapper]" = None,
     ) -> List[Chunk]:
         meta = metadata or {}
         sentences = self.SENTENCE_PATTERN.split(text)
@@ -126,6 +146,7 @@ class SemanticChunker(Chunker):
                 Chunk(content=current.strip(), metadata=meta, chunk_index=chunk_index)
             )
         self._annotate_char_positions(text, chunks)
+        self._annotate_page_info(chunks, page_mapper)
         return chunks
 
 
@@ -139,12 +160,14 @@ class RecursiveChunker(Chunker):
         self.chunk_overlap = chunk_overlap
 
     def chunk(
-        self, text: str, metadata: Dict[str, Any] | None = None
+        self, text: str, metadata: Dict[str, Any] | None = None,
+        page_mapper: "Optional[PageMapper]" = None,
     ) -> List[Chunk]:
         meta = metadata or {}
         chunks: List[Chunk] = []
         self._split_text(text, list(self.SEPARATORS), meta, 0, chunks)
         self._annotate_char_positions(text, chunks)
+        self._annotate_page_info(chunks, page_mapper)
         return chunks
 
     def _split_text(

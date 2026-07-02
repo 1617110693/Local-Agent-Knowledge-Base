@@ -620,7 +620,9 @@ HOW TO ANSWER QUESTIONS (RAG-first workflow):
             doc_id: previewChunk.doc_id,
             kb_id: previewChunk.kb_id,
             chunk_index: previewChunk.metadata?.chunk_index as number | undefined,
-            page_number: previewChunk.metadata?.page,
+            page_number: previewChunk.page_start ?? previewChunk.metadata?.page,
+            page_start: previewChunk.page_start ?? previewChunk.metadata?.page_start,
+            page_end: previewChunk.page_end ?? previewChunk.metadata?.page_end,
             score: previewChunk.score,
           }}
           onClose={() => setPreviewChunk(null)}

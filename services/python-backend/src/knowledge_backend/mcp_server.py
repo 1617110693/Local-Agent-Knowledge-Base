@@ -383,6 +383,8 @@ def get_document(kb_id: str, doc_id: str, include_chunks: bool = False, max_char
                         "content": c.get("content", ""),
                         "chunk_index": c.get("chunk_index", 0),
                         "page_number": c.get("page_number", 0),
+                        "page_start": c.get("page_start"),
+                        "page_end": c.get("page_end"),
                     }
                     for c in chunks
                 ]
@@ -436,6 +438,8 @@ def get_document_summary(kb_id: str, doc_id: str) -> dict:
                     "chunk_index": c.get("chunk_index", 0),
                     "content": c.get("content", ""),
                     "page_number": c.get("page_number", 0),
+                    "page_start": c.get("page_start"),
+                    "page_end": c.get("page_end"),
                 }
 
             preview_begin = [_format(c) for c in all_chunks[:3]]
@@ -615,24 +619,35 @@ def add_document(
 
         # Parse with MinerU
         file_size = fp.stat().st_size
+        parse_result = None
         try:
             if file_size <= 10 * 1024 * 1024 and not _config.mineru_token:
-                markdown_content = parse_document_agent(str(fp))
+                parse_result = parse_document_agent(str(fp))
             elif _config.mineru_token:
-                markdown_content = parse_document(str(fp), _config.mineru_token)
+                parse_result = parse_document(str(fp), _config.mineru_token)
             else:
                 return {"error": "File too large for agent mode and no MinerU token configured"}
         except MinerUError as e:
             return {"error": f"MinerU parse failed: {e}"}
+
+        markdown_content = parse_result.markdown
 
     # Write document markdown to KB directory (metadata saved only after indexing)
     doc_dir = Path(DATA_DIR) / f"kb_{kb_id}" / "docs" / doc_id
     doc_dir.mkdir(parents=True, exist_ok=True)
     (doc_dir / "full.md").write_text(markdown_content, encoding="utf-8")
 
-    # Index: chunk + embed
+    # Save MinerU JSON for page number tracking
+    if parse_result and parse_result.json_content:
+        (doc_dir / "mineru_result.json").write_text(parse_result.json_content, encoding="utf-8")
+
+    # Index: chunk + embed with page mapping
+    from .page_mapper import PageMapper
+    page_mapper = PageMapper.from_doc_dir(doc_dir, markdown_content)
+
     chunker = RecursiveChunker(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
-    chunks = chunker.chunk(markdown_content, metadata={"doc_id": doc_id, "doc_name": doc_name})
+    chunks = chunker.chunk(markdown_content, metadata={"doc_id": doc_id, "doc_name": doc_name},
+                           page_mapper=page_mapper)
 
     embedder = OpenAICompatibleEmbedder(
         _config.embedding_api_base, _config.embedding_api_key, _config.embedding_model,
@@ -659,6 +674,7 @@ def add_document(
 
         rows = []
         for i, (chunk, vec) in enumerate(zip(chunks, vectors)):
+            meta = chunk.metadata if isinstance(chunk.metadata, dict) else {}
             rows.append({
                 "chunk_id": f"{doc_id}-chunk-{i}",
                 "doc_id": doc_id,
@@ -666,9 +682,11 @@ def add_document(
                 "doc_name": doc_name,
                 "content": chunk.content,
                 "chunk_index": i,
-                "page_number": chunk.metadata.get("page", 0) if isinstance(chunk.metadata, dict) else 0,
+                "page_number": meta.get("page", 0),
+                "page_start": meta.get("page_start", meta.get("page", 0)),
+                "page_end": meta.get("page_end", meta.get("page", 0)),
                 "chunk_strategy": "recursive",
-                "metadata_json": json.dumps(chunk.metadata, ensure_ascii=False) if isinstance(chunk.metadata, dict) else "{}",
+                "metadata_json": json.dumps(meta, ensure_ascii=False),
                 "vector": vec,
             })
         table.add(rows)
@@ -859,6 +877,8 @@ def get_document_chunks(kb_id: str, doc_id: str, limit: int = 0) -> dict:
                 "content": c.get("content", ""),
                 "chunk_index": c.get("chunk_index", 0),
                 "page_number": c.get("page_number", 0),
+                "page_start": c.get("page_start"),
+                "page_end": c.get("page_end"),
                 "metadata": json.loads(c.get("metadata_json", "{}")) if c.get("metadata_json") else {},
             }
 

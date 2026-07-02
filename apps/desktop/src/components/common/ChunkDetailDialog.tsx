@@ -10,6 +10,8 @@ export interface ChunkInfo {
   kb_id?: string;
   chunk_index?: number;
   page_number?: number;
+  page_start?: number;
+  page_end?: number;
   score?: number;
   prev_exists?: boolean;
   next_exists?: boolean;
@@ -23,6 +25,17 @@ interface Props {
   hasPrev?: boolean;
   hasNext?: boolean;
   title?: string;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function _pageLabel(chunk: ChunkInfo, t: any): string | null {
+  const ps = chunk.page_start ?? chunk.page_number;
+  const pe = chunk.page_end ?? chunk.page_number;
+  if (!ps || ps <= 0) return null;
+  if (pe && pe > ps) {
+    return t("docs.pageRangeLabel", { start: ps, end: pe });
+  }
+  return t("docs.pageLabel", { n: ps });
 }
 
 export function ChunkDetailDialog({ chunk, onClose, onPrev, onNext, hasPrev, hasNext, title }: Props) {
@@ -42,7 +55,7 @@ export function ChunkDetailDialog({ chunk, onClose, onPrev, onNext, hasPrev, has
               <h3 className="font-semibold text-sm truncate">{title || chunk.doc_name || t("search.chunkDetail")}</h3>
               <p className="text-xs text-muted-foreground">
                 {ci != null && <span>Chunk #{ci}</span>}
-                {(chunk.page_number ?? 0) > 0 && <span> · {t("search.page")} {chunk.page_number}</span>}
+                {_pageLabel(chunk, t) && <span> · {_pageLabel(chunk, t)}</span>}
                 {chunk.score != null && chunk.score > 0 && (
                   <span className="font-mono text-primary ml-1">{(chunk.score * 100).toFixed(0)}%</span>
                 )}

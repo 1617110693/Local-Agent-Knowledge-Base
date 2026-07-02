@@ -9,6 +9,7 @@ from ..config import get_config
 from ..db.lancedb_manager import LanceDBManager
 from ..embedding import OpenAICompatibleEmbedder
 from ..chunker import Chunker
+from ..page_mapper import PageMapper
 
 router = APIRouter()
 
@@ -47,10 +48,15 @@ def index_document(req: IndexRequest):
         chunk_size = chunk_config.get("chunk_size", config.chunk_size)
         chunk_overlap = chunk_config.get("chunk_overlap", config.chunk_overlap)
 
+        # Build page mapper from MinerU JSON if available
+        doc_dir = Path(config.knowledge_base_data_dir) / f"kb_{req.kb_id}" / "docs" / req.doc_id
+        page_mapper = PageMapper.from_doc_dir(doc_dir, req.markdown_content)
+
         chunker = Chunker.create(strategy, chunk_size, chunk_overlap)
         chunks = chunker.chunk(
             req.markdown_content,
             metadata={"doc_id": req.doc_id, "doc_name": req.doc_name},
+            page_mapper=page_mapper,
         )
 
         if not chunks:

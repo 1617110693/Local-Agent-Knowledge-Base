@@ -7,7 +7,7 @@ Flow:
   1. POST /api/v4/file-urls/batch  →  get upload URL + batch_id
   2. PUT  <upload_url>             →  upload the file
   3. GET  /api/v4/extract-results/batch/{batch_id}  →  poll
-  4. Download ZIP from full_zip_url  →  extract full.md
+  4. Download ZIP from full_zip_url  →  extract full.md + JSON
 
 Progress is written to *progress* (a callable receiving str) so callers
 can forward it to MCP logs or a UI.
@@ -19,8 +19,10 @@ import ssl
 import sys
 import time
 import zipfile
+from dataclasses import dataclass, field
 from io import BytesIO
 from pathlib import Path
+from typing import Optional
 from urllib.parse import urlparse
 
 import httpx
@@ -44,6 +46,16 @@ class MinerUError(Exception):
     """Raised when MinerU parsing fails."""
 
 
+@dataclass
+class ParseResult:
+    """Result of a MinerU document parse."""
+    markdown: str
+    """The parsed markdown content (full.md)."""
+    json_content: Optional[str] = None
+    """The JSON metadata from the ZIP (contains pdf_info with page info).
+    Only available from the Precise API, not the Agent API."""
+
+
 def is_supported(file_path: str | Path) -> bool:
     """Check whether *file_path* has a supported extension."""
     return Path(file_path).suffix.lower() in SUPPORTED_EXTENSIONS
@@ -56,8 +68,8 @@ def parse_document(
     timeout: int = MAX_POLL_SECONDS,
     http: httpx.Client | None = None,
     progress: "callable[[str], None] | None" = None,
-) -> str:
-    """Parse *file_path* via MinerU Precise API, returning markdown text.
+) -> ParseResult:
+    """Parse *file_path* via MinerU Precise API, returning markdown + JSON.
 
     Args:
         file_path: Path to the local file to parse.
@@ -67,7 +79,7 @@ def parse_document(
         progress: Optional callback(str) for progress messages.
 
     Returns:
-        The parsed markdown content.
+        ParseResult with markdown and optional JSON metadata (page info).
 
     Raises:
         MinerUError: On any API or parse failure.
@@ -105,9 +117,10 @@ def parse_document(
         progress("Upload complete, waiting for parsing...")
 
         # 3. Poll for results
-        md = _poll_results(http, token, batch_id, file_name, timeout, progress)
-        progress(f"Parse complete — {len(md)} characters of markdown")
-        return md
+        result = _poll_results(http, token, batch_id, file_name, timeout, progress)
+        progress(f"Parse complete — {len(result.markdown)} characters of markdown"
+                 + (f", JSON present" if result.json_content else ", no JSON"))
+        return result
     finally:
         if own_client and http is not None:
             http.close()
@@ -119,12 +132,12 @@ def parse_document_agent(
     timeout: int = 120,
     http: httpx.Client | None = None,
     progress: "callable[[str], None] | None" = None,
-) -> str:
+) -> ParseResult:
     """Parse *file_path* via MinerU **Agent** API (no token needed).
 
     Lightweight, uses native Office API for Word/PPT parsing. Limited to
     10 MB and 20 pages.  Good fallback when the Precise API is slow or
-    unavailable.
+    unavailable.  Does NOT return JSON (Agent API only gives markdown).
 
     Args:
         file_path: Path to the local file.
@@ -133,7 +146,7 @@ def parse_document_agent(
         progress: Optional callback(str) for progress messages.
 
     Returns:
-        Parsed markdown text.
+        ParseResult with markdown (json_content is always None).
 
     Raises:
         MinerUError: On any API or parse failure.
@@ -203,7 +216,8 @@ def parse_document_agent(
             if state == "done":
                 md_url = d["data"]["markdown_url"]
                 progress("Agent API: downloading markdown...")
-                return _download_with_retry(http, md_url).decode("utf-8")
+                md = _download_with_retry(http, md_url).decode("utf-8")
+                return ParseResult(markdown=md)
             elif state == "failed":
                 err = d["data"].get("err_msg", "Unknown error")
                 raise MinerUError(f"Agent API parse failed: {err}")
@@ -288,8 +302,8 @@ def _poll_results(
     file_name: str,
     timeout: int,
     progress: "callable[[str], None]",
-) -> str:
-    """Poll for batch results with progress logging, download and extract markdown."""
+) -> ParseResult:
+    """Poll for batch results with progress logging, download and extract markdown + JSON."""
     url = f"{MINERU_API}/api/v4/extract-results/batch/{batch_id}"
     deadline = time.monotonic() + timeout
     attempt = 0
@@ -445,16 +459,31 @@ def _download_with_retry(http: httpx.Client, url: str, max_retries: int = 5) -> 
     )
 
 
-def _download_and_extract(http: httpx.Client, zip_url: str) -> str:
-    """Download the result ZIP and extract full.md."""
+def _download_and_extract(http: httpx.Client, zip_url: str) -> ParseResult:
+    """Download the result ZIP and extract full.md + JSON metadata."""
     data = _download_with_retry(http, zip_url)
+
+    markdown = None
+    json_content = None
 
     with zipfile.ZipFile(BytesIO(data)) as zf:
         for name in zf.namelist():
-            if name.endswith("full.md") or name == "full.md":
-                return zf.read(name).decode("utf-8")
+            name_lower = name.lower()
+            if name_lower.endswith("full.md") or name_lower == "full.md":
+                markdown = zf.read(name).decode("utf-8")
+            elif name_lower.endswith(".json") and "layout" not in name_lower and "middle" not in name_lower:
+                # Pick up the main result JSON (contains pdf_info), skip layout/middle files
+                try:
+                    raw = zf.read(name).decode("utf-8")
+                    if '"pdf_info"' in raw:
+                        json_content = raw
+                except Exception:
+                    pass
 
-    raise MinerUError("full.md not found in result archive")
+    if markdown is None:
+        raise MinerUError("full.md not found in result archive")
+
+    return ParseResult(markdown=markdown, json_content=json_content)
 
 
 def _short_uuid() -> str:

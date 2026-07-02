@@ -228,6 +228,8 @@ export interface ChunkByIndex {
   content: string;
   chunk_index: number;
   page_number: number;
+  page_start?: number;
+  page_end?: number;
   start_char?: number;
   metadata: Record<string, unknown>;
   prev_exists: boolean;

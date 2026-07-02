@@ -80,9 +80,13 @@ pub async fn start_parsing(
     tokio::spawn(async move {
         let result = mineru::parse_document(mode).await;
         match result {
-            Ok(markdown) => {
+            Ok(precise_result) => {
                 // Save parsed markdown
-                let _ = file_store.save_parsed_markdown(&kb_id_clone, &doc_id_clone, &markdown);
+                let _ = file_store.save_parsed_markdown(&kb_id_clone, &doc_id_clone, &precise_result.markdown);
+                // Save MinerU JSON for page number tracking
+                if let Some(ref json) = precise_result.json_content {
+                    let _ = file_store.save_mineru_json(&kb_id_clone, &doc_id_clone, json);
+                }
                 let _ = file_store.update_document_status(
                     &kb_id_clone,
                     &doc_id_clone,

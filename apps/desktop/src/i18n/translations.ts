@@ -123,6 +123,8 @@ export const translations = {
   "search.rerank": { en: "Rerank results", "zh-CN": "重排序结果" },
   "search.results": { en: "{count} results in {time}ms", "zh-CN": "找到 {count} 条结果，用时 {time}ms" },
   "search.page": { en: "Page", "zh-CN": "第" },
+  "docs.pageLabel": { en: "p.{n}", "zh-CN": "第{n}页" },
+  "docs.pageRangeLabel": { en: "pp. {start}–{end}", "zh-CN": "第{start}–{end}页" },
   "search.chunkDetail": { en: "Chunk Detail", "zh-CN": "分块详情" },
   "search.chunkIndex": { en: "Chunk {index}", "zh-CN": "第 {index} 块" },
   "search.contextWindow": { en: "Context window:", "zh-CN": "上下文窗口：" },
